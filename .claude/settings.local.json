@@ -5,7 +5,9 @@
       "Bash(npm install:*)",
       "Bash(npm uninstall:*)",
       "Bash(grep:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm run lint)"
     ],
     "deny": []
   }

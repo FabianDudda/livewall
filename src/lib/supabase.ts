@@ -27,6 +27,10 @@ export type Database = {
           created_at: string
           updated_at: string
           user_id: string
+          image_display_duration: number | null
+          auto_refresh_interval: number | null
+          upload_header_gradient: string | null
+          livewall_background_gradient: string | null
         }
         Insert: {
           id?: string
@@ -39,6 +43,10 @@ export type Database = {
           created_at?: string
           updated_at?: string
           user_id: string
+          image_display_duration?: number | null
+          auto_refresh_interval?: number | null
+          upload_header_gradient?: string | null
+          livewall_background_gradient?: string | null
         }
         Update: {
           id?: string
@@ -51,6 +59,10 @@ export type Database = {
           created_at?: string
           updated_at?: string
           user_id?: string
+          image_display_duration?: number | null
+          auto_refresh_interval?: number | null
+          upload_header_gradient?: string | null
+          livewall_background_gradient?: string | null
         }
       }
       uploads: {
@@ -95,6 +107,7 @@ export type Database = {
           title: string
           description: string | null
           created_at: string
+          hashtag: string | null
         }
         Insert: {
           id?: string
@@ -102,6 +115,7 @@ export type Database = {
           title: string
           description?: string | null
           created_at?: string
+          hashtag?: string | null
         }
         Update: {
           id?: string
@@ -109,6 +123,7 @@ export type Database = {
           title?: string
           description?: string | null
           created_at?: string
+          hashtag?: string | null
         }
       }
     }

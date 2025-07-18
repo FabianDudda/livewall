@@ -32,8 +32,8 @@ export async function generateQRCode(text: string, options?: {
 /**
  * Generate a QR code for an event upload page
  */
-export async function generateEventUploadQRCode(eventId: string): Promise<string> {
-  const uploadUrl = `${window.location.origin}/event/${eventId}/upload`
+export async function generateEventUploadQRCode(eventCode: string): Promise<string> {
+  const uploadUrl = `${window.location.origin}/event/${eventCode}/upload`
   return generateQRCode(uploadUrl, {
     width: 256,
     margin: 2,
@@ -47,8 +47,8 @@ export async function generateEventUploadQRCode(eventId: string): Promise<string
 /**
  * Generate a QR code for download (larger size)
  */
-export async function generateEventUploadQRCodeForDownload(eventId: string): Promise<string> {
-  const uploadUrl = `${window.location.origin}/event/${eventId}/upload`
+export async function generateEventUploadQRCodeForDownload(eventCode: string): Promise<string> {
+  const uploadUrl = `${window.location.origin}/event/${eventCode}/upload`
   return generateQRCode(uploadUrl, {
     width: 512,
     margin: 4,

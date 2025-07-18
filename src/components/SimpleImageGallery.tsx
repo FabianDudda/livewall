@@ -11,6 +11,7 @@ interface ImageItem {
   title?: string
   description?: string
   approved?: boolean
+  challengeTitle?: string
 }
 
 interface ActionButton {
@@ -34,9 +35,24 @@ export default function SimpleImageGallery({
   getActionButtons
 }: SimpleImageGalleryProps) {
   const [selectedImage, setSelectedImage] = useState<ImageItem | null>(null)
+  const [currentIndex, setCurrentIndex] = useState<number>(0)
 
   const handleImageClick = (image: ImageItem) => {
+    const index = images.findIndex(img => img.id === image.id)
+    setCurrentIndex(index)
     setSelectedImage(image)
+  }
+
+  const handleNext = () => {
+    const nextIndex = (currentIndex + 1) % images.length
+    setCurrentIndex(nextIndex)
+    setSelectedImage(images[nextIndex])
+  }
+
+  const handlePrevious = () => {
+    const prevIndex = currentIndex === 0 ? images.length - 1 : currentIndex - 1
+    setCurrentIndex(prevIndex)
+    setSelectedImage(images[prevIndex])
   }
 
   return (
@@ -54,6 +70,13 @@ export default function SimpleImageGallery({
               loading="lazy"
               onClick={() => handleImageClick(image)}
             />
+            
+            {/* Challenge Hashtag */}
+            {image.challengeTitle && (
+              <div className="absolute top-2 left-2 bg-black bg-opacity-75 text-white px-2 py-1 rounded text-xs font-medium">
+                #{image.challengeTitle}
+              </div>
+            )}
             
             {/* Status badge - only show when not hovering */}
             {image.approved !== undefined && (
@@ -101,6 +124,10 @@ export default function SimpleImageGallery({
           isOpen={!!selectedImage}
           onClose={() => setSelectedImage(null)}
           image={selectedImage}
+          images={images}
+          currentIndex={currentIndex}
+          onNext={images.length > 1 ? handleNext : undefined}
+          onPrevious={images.length > 1 ? handlePrevious : undefined}
         />
       )}
     </>

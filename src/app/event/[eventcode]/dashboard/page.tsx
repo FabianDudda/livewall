@@ -11,6 +11,7 @@ import { Database } from '@/lib/supabase'
 import { clearStoredPassword } from '@/lib/authStorage'
 import { encryptEventPassword, decryptEventPassword } from '@/lib/eventPasswordEncryption'
 import { generateEventUploadQRCode, generateEventUploadQRCodeForDownload } from '@/lib/qrcode'
+import ChallengeModal from '@/components/ChallengeModal'
 
 type Event = Database['public']['Tables']['events']['Row']
 type Upload = Database['public']['Tables']['uploads']['Row']
@@ -26,13 +27,14 @@ export default function EventDetail() {
   const { user, loading, signOut } = useAuth()
   const router = useRouter()
   const params = useParams()
-  const eventId = params.eventid as string
+  const eventCode = params.eventcode as string
+  const [eventId, setEventId] = useState<string | null>(null)
 
   const [event, setEvent] = useState<Event | null>(null)
   const [uploads, setUploads] = useState<Upload[]>([])
   const [challenges, setChallenges] = useState<Challenge[]>([])
   const [stats, setStats] = useState<EventStats>({ totalUploads: 0, totalContributors: 0, totalChallenges: 0 })
-  const [activeTab, setActiveTab] = useState<'overview' | 'gallery' | 'settings'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'gallery' | 'challenges' | 'settings'>('overview')
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
@@ -44,6 +46,12 @@ export default function EventDetail() {
   const [showPassword, setShowPassword] = useState(false)
   const [currentPassword, setCurrentPassword] = useState('')
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string | null>(null)
+  const [showChallengeModal, setShowChallengeModal] = useState(false)
+  const [editingChallenge, setEditingChallenge] = useState<Challenge | null>(null)
+  const [imageDisplayDuration, setImageDisplayDuration] = useState(10)
+  const [autoRefreshInterval, setAutoRefreshInterval] = useState(30)
+  const [uploadHeaderGradient, setUploadHeaderGradient] = useState('from-gray-50 to-white')
+  const [livewallBackgroundGradient, setLivewallBackgroundGradient] = useState('from-purple-900 via-blue-900 to-indigo-900')
 
   useEffect(() => {
     if (!loading && !user) {
@@ -52,10 +60,10 @@ export default function EventDetail() {
   }, [user, loading, router])
 
   useEffect(() => {
-    if (user && eventId) {
+    if (user && eventCode) {
       fetchEventData()
     }
-  }, [user, eventId])
+  }, [user, eventCode])
 
   const fetchEventData = async () => {
     try {
@@ -65,7 +73,7 @@ export default function EventDetail() {
       const { data: eventData, error: eventError } = await supabase
         .from('events')
         .select('*')
-        .eq('id', eventId)
+        .eq('event_code', eventCode)
         .eq('user_id', user?.id)
         .single()
 
@@ -79,10 +87,19 @@ export default function EventDetail() {
       }
 
       setEvent(eventData)
+      setEventId(eventData.id)
       
       // Initialize toggle states
       setAutoApprovalEnabled(eventData.auto_approval)
       setPasswordProtectedEnabled(eventData.password_protected)
+      
+      // Initialize timing settings
+      setImageDisplayDuration(eventData.image_display_duration || 10)
+      setAutoRefreshInterval(eventData.auto_refresh_interval || 30)
+      
+      // Initialize gradient settings
+      setUploadHeaderGradient(eventData.upload_header_gradient || 'from-gray-50 to-white')
+      setLivewallBackgroundGradient(eventData.livewall_background_gradient || 'from-purple-900 via-blue-900 to-indigo-900')
       
       // Retrieve current password if exists
       if (eventData.password) {
@@ -96,12 +113,12 @@ export default function EventDetail() {
         supabase
           .from('uploads')
           .select('*')
-          .eq('event_id', eventId)
+          .eq('event_id', eventData.id)
           .order('created_at', { ascending: false }),
         supabase
           .from('challenges')
           .select('*')
-          .eq('event_id', eventId)
+          .eq('event_id', eventData.id)
           .order('created_at', { ascending: false })
       ])
 
@@ -126,7 +143,7 @@ export default function EventDetail() {
 
       // Generate QR code for event upload page
       try {
-        const qrCode = await generateEventUploadQRCode(eventId)
+        const qrCode = await generateEventUploadQRCode(eventData.event_code)
         setQrCodeDataUrl(qrCode)
       } catch (qrError) {
         console.error('Error generating QR code:', qrError)
@@ -230,13 +247,17 @@ export default function EventDetail() {
         auto_approval: autoApproval,
         password_protected: passwordProtected,
         password: encryptedPassword,
+        image_display_duration: imageDisplayDuration,
+        auto_refresh_interval: autoRefreshInterval,
+        upload_header_gradient: uploadHeaderGradient,
+        livewall_background_gradient: livewallBackgroundGradient,
         updated_at: new Date().toISOString()
       }
 
       const { error } = await supabase
         .from('events')
         .update(updateData)
-        .eq('id', eventId)
+        .eq('id', eventId!)
         .eq('user_id', user?.id)
 
       if (error) {
@@ -248,7 +269,7 @@ export default function EventDetail() {
         const { error: bulkApprovalError } = await supabase
           .from('uploads')
           .update({ approved: true })
-          .eq('event_id', eventId)
+          .eq('event_id', eventId!)
           .eq('approved', false)
 
         if (bulkApprovalError) {
@@ -262,7 +283,7 @@ export default function EventDetail() {
 
       // Clear stored password authentication if password was changed
       if (passwordChanged) {
-        clearStoredPassword(eventId)
+        clearStoredPassword(eventId!)
       }
 
       // Update local state
@@ -314,7 +335,7 @@ export default function EventDetail() {
         .from('uploads')
         .update({ approved: true })
         .eq('id', uploadId)
-        .eq('event_id', eventId)
+        .eq('event_id', eventId!)
 
       if (error) {
         throw error
@@ -337,7 +358,7 @@ export default function EventDetail() {
         .from('uploads')
         .update({ approved: false })
         .eq('id', uploadId)
-        .eq('event_id', eventId)
+        .eq('event_id', eventId!)
 
       if (error) {
         throw error
@@ -364,7 +385,7 @@ export default function EventDetail() {
         .from('uploads')
         .delete()
         .eq('id', uploadId)
-        .eq('event_id', eventId)
+        .eq('event_id', eventId!)
 
       if (error) {
         throw error
@@ -389,7 +410,7 @@ export default function EventDetail() {
     if (!event) return
 
     try {
-      const qrCode = await generateEventUploadQRCodeForDownload(eventId)
+      const qrCode = await generateEventUploadQRCodeForDownload(eventCode)
       
       // Create download link
       const link = document.createElement('a')
@@ -404,6 +425,63 @@ export default function EventDetail() {
     }
   }
 
+  const handleCreateChallenge = () => {
+    setEditingChallenge(null)
+    setShowChallengeModal(true)
+  }
+
+  const handleEditChallenge = (challenge: Challenge) => {
+    setEditingChallenge(challenge)
+    setShowChallengeModal(true)
+  }
+
+  const handleDeleteChallenge = async (challengeId: string) => {
+    if (!confirm('Challenge wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.')) {
+      return
+    }
+
+    try {
+      const { error } = await supabase
+        .from('challenges')
+        .delete()
+        .eq('id', challengeId)
+        .eq('event_id', eventId!)
+
+      if (error) {
+        throw error
+      }
+
+      // Update local state
+      setChallenges(prev => prev.filter(challenge => challenge.id !== challengeId))
+
+      // Update stats
+      setStats(prev => ({
+        ...prev,
+        totalChallenges: prev.totalChallenges - 1
+      }))
+
+    } catch (error) {
+      console.error('Error deleting challenge:', error)
+      setError('Fehler beim Löschen der Challenge')
+    }
+  }
+
+  const handleChallengeCreated = (newChallenge: Challenge) => {
+    setChallenges(prev => [newChallenge, ...prev])
+    setStats(prev => ({
+      ...prev,
+      totalChallenges: prev.totalChallenges + 1
+    }))
+    setShowChallengeModal(false)
+  }
+
+  const handleChallengeUpdated = (updatedChallenge: Challenge) => {
+    setChallenges(prev => prev.map(challenge => 
+      challenge.id === updatedChallenge.id ? updatedChallenge : challenge
+    ))
+    setShowChallengeModal(false)
+  }
+
   const handleBulkApprove = async () => {
     const pendingUploads = uploads.filter(upload => !upload.approved)
     
@@ -415,7 +493,7 @@ export default function EventDetail() {
       const { error } = await supabase
         .from('uploads')
         .update({ approved: true })
-        .eq('event_id', eventId)
+        .eq('event_id', eventId!)
         .eq('approved', false)
 
       if (error) {
@@ -459,8 +537,8 @@ export default function EventDetail() {
     return null
   }
 
-  const liveWallUrl = `${window.location.origin}/event/${event.id}/livewall`
-  const uploadUrl = `${window.location.origin}/event/${event.id}/upload`
+  const liveWallUrl = `${window.location.origin}/event/${event.event_code}/livewall`
+  const uploadUrl = `${window.location.origin}/event/${event.event_code}/upload`
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -519,6 +597,16 @@ export default function EventDetail() {
               }`}
             >
               Galerie
+            </button>
+            <button
+              onClick={() => setActiveTab('challenges')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === 'challenges'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Challenges
             </button>
             <button
               onClick={() => setActiveTab('settings')}
@@ -664,7 +752,10 @@ export default function EventDetail() {
                 </div>
               </button>
 
-              <button className="bg-white p-6 rounded-lg shadow-sm border hover:shadow-md transition-shadow text-left">
+              <button 
+                onClick={handleCreateChallenge}
+                className="bg-white p-6 rounded-lg shadow-sm border hover:shadow-md transition-shadow text-left"
+              >
                 <div className="flex items-center gap-4">
                   <div className="bg-purple-100 p-3 rounded-full">
                     <Plus className="w-6 h-6 text-purple-600" />
@@ -752,14 +843,21 @@ export default function EventDetail() {
               ) : (
                 <div className="p-6">
                   <SimpleImageGallery
-                    images={getSortedUploads().map((upload) => ({
-                      id: upload.id,
-                      url: upload.file_url,
-                      alt: upload.comment || 'Upload',
-                      title: upload.uploader_name || 'Anonymer Nutzer',
-                      description: upload.comment || undefined,
-                      approved: upload.approved
-                    }))}
+                    images={getSortedUploads().map((upload) => {
+                      const challenge = upload.challenge_id 
+                        ? challenges.find(c => c.id === upload.challenge_id)
+                        : null
+                      
+                      return {
+                        id: upload.id,
+                        url: upload.file_url,
+                        alt: upload.comment || 'Upload',
+                        title: upload.uploader_name || 'Anonymer Nutzer',
+                        description: upload.comment || undefined,
+                        approved: upload.approved,
+                        challengeTitle: challenge?.hashtag || challenge?.title.toLowerCase().replace(/\s+/g, '')
+                      }
+                    })}
                     showActions={true}
                     getActionButtons={(image) => [
                       {
@@ -782,6 +880,80 @@ export default function EventDetail() {
                       }
                     ]}
                   />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'challenges' && (
+          <div className="space-y-6">
+            {/* Challenge Header */}
+            <div className="bg-white p-6 rounded-lg shadow-sm border">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Foto-Challenges</h3>
+                  <p className="text-gray-600 text-sm mt-1">
+                    Erstellen Sie spezielle Foto-Challenges für Ihre Gäste
+                  </p>
+                </div>
+                <button
+                  onClick={handleCreateChallenge}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  Neue Challenge
+                </button>
+              </div>
+            </div>
+
+            {/* Challenges List */}
+            <div className="bg-white rounded-lg shadow-sm border">
+              {challenges.length === 0 ? (
+                <div className="text-center py-12">
+                  <Target className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">Noch keine Challenges</h3>
+                  <p className="text-gray-600 mb-4">
+                    Erstellen Sie Ihre erste Foto-Challenge für das Event
+                  </p>
+                  <button
+                    onClick={handleCreateChallenge}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors inline-flex items-center gap-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Challenge erstellen
+                  </button>
+                </div>
+              ) : (
+                <div className="p-6">
+                  <div className="space-y-4">
+                    {challenges.map((challenge) => (
+                      <div key={challenge.id} className="border border-gray-200 rounded-lg p-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <h4 className="font-semibold text-gray-900 mb-1">{challenge.title}</h4>
+                            <p className="text-gray-600 text-sm">{challenge.description}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleEditChallenge(challenge)}
+                              className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                              title="Challenge bearbeiten"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteChallenge(challenge.id)}
+                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Challenge löschen"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -934,6 +1106,126 @@ export default function EventDetail() {
                   </div>
                 )}
 
+                {/* Image Display Duration Slider */}
+                <div>
+                  <label htmlFor="imageDisplayDuration" className="block text-sm font-medium text-gray-700 mb-2">
+                    Anzeigedauer pro Bild: {imageDisplayDuration} Sekunden
+                  </label>
+                  <div className="space-y-2">
+                    <input
+                      id="imageDisplayDuration"
+                      type="range"
+                      min="5"
+                      max="30"
+                      value={imageDisplayDuration}
+                      onChange={(e) => setImageDisplayDuration(parseInt(e.target.value))}
+                      disabled={isUpdating}
+                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+                    />
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>5s</span>
+                      <span>30s</span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Wie lange wird jedes Bild in der Live-Fotowand angezeigt
+                  </p>
+                </div>
+
+                {/* Auto Refresh Interval Slider */}
+                <div>
+                  <label htmlFor="autoRefreshInterval" className="block text-sm font-medium text-gray-700 mb-2">
+                    Auto-Aktualisierung: {autoRefreshInterval < 60 ? `${autoRefreshInterval}s` : `${Math.round(autoRefreshInterval / 60)}min`}
+                  </label>
+                  <div className="space-y-2">
+                    <input
+                      id="autoRefreshInterval"
+                      type="range"
+                      min="15"
+                      max="300"
+                      step="15"
+                      value={autoRefreshInterval}
+                      onChange={(e) => setAutoRefreshInterval(parseInt(e.target.value))}
+                      disabled={isUpdating}
+                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+                    />
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>15s</span>
+                      <span>5min</span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Wie oft wird nach neuen Uploads gesucht
+                  </p>
+                </div>
+
+                {/* Gradient Settings */}
+                <div className="space-y-6">
+                  <h4 className="text-lg font-semibold text-gray-900">Farbdesign</h4>
+                  
+                  {/* Upload Header Gradient */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-3">
+                      Upload-Seite Header Gradient
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                      {[
+                        { value: 'from-gray-50 to-white', label: 'Hellgrau zu Weiß' },
+                        { value: 'from-blue-100 to-white', label: 'Hellblau zu Weiß' },
+                        { value: 'from-purple-100 to-white', label: 'Helllila zu Weiß' },
+                        { value: 'from-pink-100 to-white', label: 'Hellrosa zu Weiß' },
+                        { value: 'from-purple-900 via-blue-900 to-indigo-900', label: 'Lila zu Blau zu Indigo' },
+                        { value: 'from-gray-900 via-gray-800 to-black', label: 'Dunkelgrau zu Schwarz' },
+                        { value: 'from-pink-400 to-rose-400', label: 'Pink zu Rosa' },
+                        { value: 'from-fuchsia-600 to-purple-600', label: 'Fuchsia zu Lila' }
+                      ].map((gradient) => (
+                        <button
+                          key={gradient.value}
+                          type="button"
+                          onClick={() => setUploadHeaderGradient(gradient.value)}
+                          className={`h-16 rounded-lg border-2 transition-all bg-gradient-to-br ${gradient.value} ${
+                            uploadHeaderGradient === gradient.value
+                              ? 'border-blue-500 ring-2 ring-blue-200'
+                              : 'border-gray-200 hover:border-gray-300'
+                          }`}
+                          title={gradient.label}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Livewall Background Gradient */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-3">
+                      Live-Fotowand Hintergrund Gradient
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                      {[
+                         { value: 'from-gray-50 to-white', label: 'Hellgrau zu Weiß' },
+                         { value: 'from-blue-100 to-white', label: 'Hellblau zu Weiß' },
+                         { value: 'from-purple-100 to-white', label: 'Helllila zu Weiß' },
+                         { value: 'from-pink-100 to-white', label: 'Hellrosa zu Weiß' },
+                         { value: 'from-purple-900 via-blue-900 to-indigo-900', label: 'Lila zu Blau zu Indigo' },
+                         { value: 'from-gray-900 via-gray-800 to-black', label: 'Dunkelgrau zu Schwarz' },
+                         { value: 'from-pink-400 to-rose-400', label: 'Pink zu Rosa' },
+                         { value: 'from-fuchsia-600 to-purple-600', label: 'Fuchsia zu Lila' }     
+                      ].map((gradient) => (
+                        <button
+                          key={gradient.value}
+                          type="button"
+                          onClick={() => setLivewallBackgroundGradient(gradient.value)}
+                          className={`h-16 rounded-lg border-2 transition-all bg-gradient-to-br ${gradient.value} ${
+                            livewallBackgroundGradient === gradient.value
+                              ? 'border-white ring-2 ring-blue-200'
+                              : 'border-gray-200 hover:border-gray-300'
+                          }`}
+                          title={gradient.label}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
                 <div className="flex gap-3 pt-4">
                   <button
                     type="button"
@@ -961,6 +1253,15 @@ export default function EventDetail() {
         )}
       </main>
       
+      {/* Challenge Modal */}
+      <ChallengeModal
+        isOpen={showChallengeModal}
+        onClose={() => setShowChallengeModal(false)}
+        eventId={eventId!}
+        challenge={editingChallenge}
+        onChallengeCreated={handleChallengeCreated}
+        onChallengeUpdated={handleChallengeUpdated}
+      />
     </div>
   )
 }

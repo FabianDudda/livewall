@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useParams, useRouter } from 'next/navigation'
-import { Camera, Upload, Image as ImageIcon, Film, X, Check, AlertCircle } from 'lucide-react'
+import { useParams } from 'next/navigation'
+import { Camera, Upload, Image as ImageIcon, X, Check, AlertCircle, MessageSquare } from 'lucide-react'
 import SimpleImageGallery from '@/components/SimpleImageGallery'
+import MessageModal from '@/components/MessageModal'
 import { supabase } from '@/lib/supabase'
 import { uploadGuestImage } from '@/lib/guestUpload'
 import { Database } from '@/lib/supabase'
@@ -29,12 +30,13 @@ interface UploadPageState {
   isPasswordProtected: boolean
   isAuthenticated: boolean
   passwordError: string | null
+  showMessageModal: boolean
 }
 
 export default function UploadPage() {
   const params = useParams()
-  const router = useRouter()
-  const eventId = params.eventid as string
+  const eventCode = params.eventcode as string
+  const [eventId, setEventId] = useState<string | null>(null)
 
   const [state, setState] = useState<UploadPageState>({
     event: null,
@@ -50,7 +52,8 @@ export default function UploadPage() {
     success: null,
     isPasswordProtected: false,
     isAuthenticated: false,
-    passwordError: null
+    passwordError: null,
+    showMessageModal: false
   })
 
   const [formData, setFormData] = useState({
@@ -60,21 +63,21 @@ export default function UploadPage() {
   })
 
   useEffect(() => {
-    if (eventId) {
+    if (eventCode) {
       loadEventData()
     }
-  }, [eventId])
+  }, [eventCode])
 
 
   const loadEventData = async () => {
     try {
       setState(prev => ({ ...prev, isLoading: true, error: null }))
 
-      // Fetch event by ID
+      // Fetch event by event_code
       const { data: event, error: eventError } = await supabase
         .from('events')
         .select('*')
-        .eq('id', eventId)
+        .eq('event_code', eventCode)
         .single()
 
       if (eventError || !event) {
@@ -83,7 +86,8 @@ export default function UploadPage() {
       }
 
       // Set password protection state
-      const isAuthenticated = !event.password_protected || checkStoredPassword(eventId)
+      const isAuthenticated = !event.password_protected || checkStoredPassword(event.id)
+      setEventId(event.id)
       setState(prev => ({
         ...prev,
         isPasswordProtected: event.password_protected,
@@ -246,7 +250,7 @@ export default function UploadPage() {
       const isValid = verifyEventPassword(password, state.event.password, state.event.event_code)
       if (isValid) {
         // Store authentication in localStorage
-        storePasswordAuthentication(eventId)
+        storePasswordAuthentication(eventId!)
         setState(prev => ({
           ...prev,
           isAuthenticated: true,
@@ -259,6 +263,19 @@ export default function UploadPage() {
       console.error('Password verification error:', error)
       setState(prev => ({ ...prev, passwordError: 'Fehler bei der Passwort-Überprüfung' }))
     }
+  }
+
+  const handleMessageSent = (_message: { id: string; eventId: string; message: string; senderName?: string; timestamp: number }) => {
+    setState(prev => ({ 
+      ...prev, 
+      success: 'Nachricht erfolgreich gesendet!',
+      showMessageModal: false
+    }))
+    
+    // Clear success message after 3 seconds
+    setTimeout(() => {
+      setState(prev => ({ ...prev, success: null }))
+    }, 3000)
   }
 
   if (state.isLoading) {
@@ -332,38 +349,43 @@ export default function UploadPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Hero Section with Event Info */}
-      <div className="relative bg-gradient-to-r from-blue-600 to-purple-600 text-white">
-        {state.event?.cover_image_url && (
-          <div className="absolute inset-0">
-            <img 
-              src={state.event.cover_image_url} 
-              alt={state.event.name}
-              className="w-full h-full object-cover opacity-30"
-            />
+    <div className="min-h-screen bg-white">
+      {/* Minimalistic Header */}
+      <div className="border-b border-gray-100">
+        <div className={`bg-gradient-to-br ${state.event?.upload_header_gradient || 'from-gray-50 to-white'} max-w-6xl mx-auto px-6 py-8`}>
+          <div className="text-center">
+            {/* Circular Event Cover Image */}
+            {state.event?.cover_image_url && (
+              <div className="flex justify-center mb-6">
+                <div className="w-32 h-32 sm:w-40 sm:h-40 md:w-48 md:h-48 lg:w-52 lg:h-52 xl:w-56 xl:h-56 max-w-[200px] max-h-[200px] rounded-full overflow-hidden border-4 border-gray-100 shadow-lg">
+                  <img
+                    src={state.event.cover_image_url}
+                    alt={state.event.name}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              </div>
+            )}
+            
+            <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-light text-white whitespace-nowrap overflow-hidden text-ellipsis px-4">{state.event?.name}</h1>
           </div>
-        )}
-        <div className="relative z-10 max-w-4xl mx-auto px-4 py-12">
-          <h1 className="text-3xl md:text-4xl font-bold mb-4">{state.event?.name}</h1>
-          <p className="text-xl opacity-90">Event-Code: {state.event?.event_code}</p>
         </div>
       </div>
 
       {/* Success/Error Messages */}
       {state.success && (
-        <div className="max-w-4xl mx-auto px-4 py-4">
-          <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded flex items-center">
-            <Check className="w-5 h-5 mr-2" />
+        <div className="max-w-6xl mx-auto px-6 py-4">
+          <div className="bg-green-50 border border-green-100 text-green-800 px-6 py-4 rounded-2xl flex items-center shadow-sm">
+            <Check className="w-5 h-5 mr-3 text-green-600" />
             {state.success}
           </div>
         </div>
       )}
 
       {state.error && (
-        <div className="max-w-4xl mx-auto px-4 py-4">
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded flex items-center">
-            <AlertCircle className="w-5 h-5 mr-2" />
+        <div className="max-w-6xl mx-auto px-6 py-4">
+          <div className="bg-red-50 border border-red-100 text-red-800 px-6 py-4 rounded-2xl flex items-center shadow-sm">
+            <AlertCircle className="w-5 h-5 mr-3 text-red-600" />
             {state.error}
           </div>
         </div>
@@ -374,9 +396,16 @@ export default function UploadPage() {
         
         {!state.showUploadForm ? (
           <div className="text-center mb-12">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Foto oder Video hochladen</h2>
+            <h2 className="text-2xl font-bold text-gray-900 mb-6">Foto oder Nachricht senden</h2>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <label className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium cursor-pointer inline-flex items-center justify-center gap-2 transition-colors">
+            <button
+                onClick={handleCameraCapture}
+                className="bg-gray-800 hover:bg-gray-900 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center justify-center gap-2 transition-colors shadow-sm"
+              >
+                <Camera className="w-5 h-5" />
+                Kamera öffnen
+              </button>
+              <label className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-3 rounded-lg font-medium cursor-pointer inline-flex items-center justify-center gap-2 transition-opacity shadow-sm border border-gray-200">
                 <ImageIcon className="w-5 h-5" />
                 Aus Galerie wählen
                 <input
@@ -389,12 +418,13 @@ export default function UploadPage() {
                   className="hidden"
                 />
               </label>
+         
               <button
-                onClick={handleCameraCapture}
-                className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center justify-center gap-2 transition-colors"
+                onClick={() => setState(prev => ({ ...prev, showMessageModal: true }))}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center justify-center gap-2 transition-colors shadow-sm"
               >
-                <Camera className="w-5 h-5" />
-                Kamera öffnen
+                <MessageSquare className="w-5 h-5" />
+                Nachricht senden
               </button>
             </div>
           </div>
@@ -509,28 +539,43 @@ export default function UploadPage() {
         {/* Uploads Grid */}
         <div>
           <h2 className="text-2xl font-bold text-gray-900 mb-6">
-            Hochgeladene Medien ({state.uploads.length})
+            Bilder ({state.uploads.length})
           </h2>
           
           {state.uploads.length === 0 ? (
             <div className="text-center py-12">
               <ImageIcon className="w-16 h-16 text-gray-400 mx-auto mb-4" />
               <p className="text-gray-600">Noch keine Uploads vorhanden</p>
-              <p className="text-sm text-gray-500">Sei der Erste, der ein Foto oder Video hochlädt!</p>
+              <p className="text-sm text-gray-500">Sei der Erste, der ein Foto hochlädt!</p>
             </div>
           ) : (
             <SimpleImageGallery
-              images={state.uploads.map((upload) => ({
-                id: upload.id,
-                url: upload.file_url,
-                alt: upload.uploader_name || 'Upload',
-                title: upload.uploader_name || 'Anonymer Nutzer',
-                description: upload.comment || undefined
-              }))}
+              images={state.uploads.map((upload) => {
+                const challenge = upload.challenge_id 
+                  ? state.challenges.find(c => c.id === upload.challenge_id)
+                  : null
+                
+                return {
+                  id: upload.id,
+                  url: upload.file_url,
+                  alt: upload.uploader_name || 'Upload',
+                  title: upload.uploader_name || 'Anonymer Nutzer',
+                  description: upload.comment || undefined,
+                  challengeTitle: challenge?.hashtag || challenge?.title.toLowerCase().replace(/\s+/g, '')
+                }
+              })}
             />
           )}
         </div>
       </div>
+      
+      {/* Message Modal */}
+      <MessageModal
+        isOpen={state.showMessageModal}
+        onClose={() => setState(prev => ({ ...prev, showMessageModal: false }))}
+        eventId={eventId!}
+        onMessageSent={handleMessageSent}
+      />
     </div>
   )
 }
