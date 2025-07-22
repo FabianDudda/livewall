@@ -89,8 +89,8 @@ export default function Dashboard() {
     setIsEventModalOpen(false)
   }
 
-  const handleEventClick = (eventId: string) => {
-    router.push(`/event/${eventId}/dashboard`)
+  const handleEventClick = (eventCode: string) => {
+    router.push(`/event/${eventCode}/dashboard`)
   }
 
   const formatDate = (dateString: string) => {
@@ -229,7 +229,7 @@ export default function Dashboard() {
                   <div
                     key={event.id}
                     className="bg-white border rounded-lg overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
-                    onClick={() => handleEventClick(event.id)}
+                    onClick={() => handleEventClick(event.event_code)}
                   >
                     {event.cover_image_url ? (
                       <img
@@ -272,7 +272,7 @@ export default function Dashboard() {
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
-                          handleEventClick(event.id)
+                          handleEventClick(event.event_code)
                         }}
                         className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
                       >

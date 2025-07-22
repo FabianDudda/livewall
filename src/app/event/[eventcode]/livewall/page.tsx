@@ -31,9 +31,13 @@ export default function LivewallPage() {
   const [messages, setMessages] = useState<LiveMessage[]>([])
   const messageCounterRef = useRef(0)
   const [currentIndex, setCurrentIndex] = useState(0)
+  const [nextIndex, setNextIndex] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [isTransitioning, setIsTransitioning] = useState(false)
+  const [showingCurrent, setShowingCurrent] = useState(true) // true = show currentIndex, false = show nextIndex
+  const currentIndexRef = useRef(0)
+  const nextIndexRef = useRef(0)
+  const showingCurrentRef = useRef(true)
   
   // Helper functions for persistent position storage using upload ID
   const getStoredUploadId = () => {
@@ -64,14 +68,30 @@ export default function LivewallPage() {
         const storedIndex = uploads.findIndex(upload => upload.id === storedUploadId)
         if (storedIndex !== -1) {
           setCurrentIndex(storedIndex)
+          currentIndexRef.current = storedIndex
         } else {
           setCurrentIndex(0)
+          currentIndexRef.current = 0
         }
       } else {
         setCurrentIndex(0)
+        currentIndexRef.current = 0
       }
     }
   }, [uploads.length])
+
+  // Sync refs with state
+  useEffect(() => {
+    currentIndexRef.current = currentIndex
+  }, [currentIndex])
+  
+  useEffect(() => {
+    nextIndexRef.current = nextIndex
+  }, [nextIndex])
+  
+  useEffect(() => {
+    showingCurrentRef.current = showingCurrent
+  }, [showingCurrent])
 
   const loadEventData = async () => {
     try {
@@ -162,6 +182,7 @@ export default function LivewallPage() {
     const interval = setInterval(() => {
       if (eventId) {
         refreshUploads()
+     
       }
     }, intervalTime)
 
@@ -193,29 +214,43 @@ export default function LivewallPage() {
     }
   }
 
-  // Slideshow functionality
+  // Simplified crossfade slideshow functionality
   useEffect(() => {
-    if (uploads.length === 0) return
+    if (uploads.length <= 1) return
 
     const displayDuration = (event?.image_display_duration || 10) * 1000
+    
     const interval = setInterval(() => {
-      setIsTransitioning(true)
+      // Use refs to get current values without dependencies
+      const isShowingCurrent = showingCurrentRef.current
+      const currentIdx = currentIndexRef.current
+      const nextIdx = nextIndexRef.current
       
-      // After transition completes, change image
-      setTimeout(() => {
-        // Simple sequence through all uploads (newest to oldest)
-        setCurrentIndex((prev) => {
-          const nextIndex = (prev + 1) % uploads.length
-          
-          // Store the upload ID of the next image for persistence
-          if (uploads[nextIndex]) {
-            setStoredUploadId(uploads[nextIndex].id)
-          }
-          
-          return nextIndex
-        })
-        setIsTransitioning(false)
-      }, 500) // Smooth 500ms transition
+      // Prepare next image
+      const newNextIndex = isShowingCurrent ? (currentIdx + 1) % uploads.length : (nextIdx + 1) % uploads.length
+      
+      if (isShowingCurrent) {
+        // Currently showing currentIndex, prepare nextIndex
+        setNextIndex(newNextIndex)
+        
+        // Store the upload ID for persistence
+        if (uploads[newNextIndex]) {
+          setStoredUploadId(uploads[newNextIndex].id)
+        }
+        
+        // Start crossfade to next image
+        setTimeout(() => {
+          setShowingCurrent(false)
+        }, 50)
+      } else {
+        // Currently showing nextIndex, prepare currentIndex
+        setCurrentIndex(newNextIndex)
+        
+        // Start crossfade to current image
+        setTimeout(() => {
+          setShowingCurrent(true)
+        }, 50)
+      }
     }, displayDuration)
 
     return () => clearInterval(interval)
@@ -263,50 +298,89 @@ export default function LivewallPage() {
   }
 
   const currentUpload = uploads[currentIndex]
+  const nextUpload = uploads[nextIndex]
   const uploadUrl = `${window.location.origin}/event/${eventCode}/upload`
 
-  // Get challenge for current upload
-  const getCurrentChallenge = () => {
-    if (!currentUpload?.challenge_id) return null
-    return challenges.find(challenge => challenge.id === currentUpload.challenge_id)
+  // Get challenge for upload
+  const getChallenge = (upload: Upload) => {
+    if (!upload?.challenge_id) return null
+    return challenges.find(challenge => challenge.id === upload.challenge_id)
   }
 
-  const currentChallenge = getCurrentChallenge()
 
   return (
     <div className={`min-h-screen bg-gradient-to-br ${event?.livewall_background_gradient || 'from-purple-900 via-blue-900 to-indigo-900'} flex items-center justify-center relative overflow-hidden`}>
-      {/* Main Polaroid Image */}
-      <div className={`transition-all duration-500 ease-in-out transform ${isTransitioning ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
-        <div className="bg-white p-6 pb-20 rounded-lg shadow-2xl rotate-1 transition-transform duration-300 max-w-6xl max-h-[90vh] mx-auto">
-          {/* Image */}
-          <div className="relative">
-            <img
-              src={currentUpload.file_url}
-              alt={currentUpload.comment || 'Foto'}
-              className="w-full h-auto max-h-[75vh] object-contain rounded-sm"
-              style={{ aspectRatio: 'auto' }}
-            />
+      {/* Crossfade Images - Two overlapping image containers */}
+      
+      {/* Current Image */}
+      {currentUpload && (
+        <div className={`absolute transition-opacity duration-1000 ease-in-out ${showingCurrent ? 'opacity-100' : 'opacity-0'}`}>
+          <div className="bg-white p-6 pb-20 rounded-lg shadow-2xl rotate-1 transition-transform duration-300 max-w-6xl max-h-[90vh] mx-auto">
+            <div className="relative">
+              <img
+                src={currentUpload.file_url}
+                alt={currentUpload.comment || 'Foto'}
+                className="w-full h-auto max-h-[75vh] object-contain rounded-sm"
+                style={{ aspectRatio: 'auto' }}
+              />
+              
+              {getChallenge(currentUpload) && (
+                <div className="absolute top-4 right-4 bg-black bg-opacity-75 text-white px-3 py-1 rounded-full text-sm font-medium">
+                  #{getChallenge(currentUpload)?.hashtag || getChallenge(currentUpload)?.title.toLowerCase().replace(/\s+/g, '')}
+                </div>
+              )}
+            </div>
             
-            {/* Challenge Hashtag */}
-            {currentChallenge && (
-              <div className="absolute top-4 right-4 bg-black bg-opacity-75 text-white px-3 py-1 rounded-full text-sm font-medium">
-                #{currentChallenge.hashtag || currentChallenge.title.toLowerCase().replace(/\s+/g, '')}
-              </div>
-            )}
-          </div>
-          
-          {/* Polaroid Caption */}
-          <div className="mt-6 text-center">
-            {currentUpload.comment && (
-              <p className="text-gray-800 text-xl leading-relaxed mb-2" style={{ fontFamily: 'var(--font-kalam), cursive' }}>
-                {currentUpload.comment}
+            <div className="mt-6 text-center">
+              {currentUpload.comment && (
+                <p className="text-gray-800 text-xl leading-relaxed mb-2" style={{ fontFamily: 'var(--font-kalam), cursive' }}>
+                  {currentUpload.comment}
+                </p>
+              )}
+              <p className="text-gray-600 text-base" style={{ fontFamily: 'var(--font-kalam), cursive' }}>
+                - {currentUpload.uploader_name || 'Anonym'}
               </p>
-            )}
-            <p className="text-gray-600 text-base" style={{ fontFamily: 'var(--font-kalam), cursive' }}>
-              - {currentUpload.uploader_name || 'Anonym'}
-            </p>
+            </div>
           </div>
         </div>
+      )}
+
+      {/* Next Image */}
+      {nextUpload && (
+        <div className={`absolute transition-opacity duration-1000 ease-in-out ${!showingCurrent ? 'opacity-100' : 'opacity-0'}`}>
+          <div className="bg-white p-6 pb-20 rounded-lg shadow-2xl rotate-1 transition-transform duration-300 max-w-6xl max-h-[90vh] mx-auto">
+            <div className="relative">
+              <img
+                src={nextUpload.file_url}
+                alt={nextUpload.comment || 'Foto'}
+                className="w-full h-auto max-h-[75vh] object-contain rounded-sm"
+                style={{ aspectRatio: 'auto' }}
+              />
+              
+              {getChallenge(nextUpload) && (
+                <div className="absolute top-4 right-4 bg-black bg-opacity-75 text-white px-3 py-1 rounded-full text-sm font-medium">
+                  #{getChallenge(nextUpload)?.hashtag || getChallenge(nextUpload)?.title.toLowerCase().replace(/\s+/g, '')}
+                </div>
+              )}
+            </div>
+            
+            <div className="mt-6 text-center">
+              {nextUpload.comment && (
+                <p className="text-gray-800 text-xl leading-relaxed mb-2" style={{ fontFamily: 'var(--font-kalam), cursive' }}>
+                  {nextUpload.comment}
+                </p>
+              )}
+              <p className="text-gray-600 text-base" style={{ fontFamily: 'var(--font-kalam), cursive' }}>
+                - {nextUpload.uploader_name || 'Anonym'}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* QR Code */}
+      <div className="absolute bottom-8 right-8 z-50">
+        <QRCode value={uploadUrl} size={120} />
       </div>
 
       {/* Messages */}
