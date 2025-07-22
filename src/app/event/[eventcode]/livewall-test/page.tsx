@@ -144,7 +144,6 @@ export default function LivewallPage() {
   
   // Refs for accessing current state in callbacks
   const slideshowIntervalRef = useRef<NodeJS.Timeout | null>(null)
-  const newImageQueuedRef = useRef(false)
   const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   
   // Refs to maintain stable slot contents during transitions
@@ -165,16 +164,6 @@ export default function LivewallPage() {
     }
   }, [eventCode])
 
-  // Debounced refresh function to handle multiple simultaneous events
-  const debouncedRefresh = useCallback(() => {
-    if (refreshTimeoutRef.current) {
-      clearTimeout(refreshTimeoutRef.current)
-    }
-    
-    refreshTimeoutRef.current = setTimeout(() => {
-      refreshUploads()
-    }, 300) // 300ms debounce
-  }, [])
 
   // Debounced refresh with specific event ID
   const debouncedRefreshWithId = useCallback((targetEventId: string) => {
@@ -294,7 +283,8 @@ export default function LivewallPage() {
           filter: `event_id=eq.${currentEventId}`
         }, 
         (payload) => {
-          console.log('🔔 Realtime upload change detected:', payload.eventType, payload.new?.id)
+          const uploadId = (payload.new as Record<string, unknown>)?.id || 'unknown'
+          console.log('🔔 Realtime upload change detected:', payload.eventType, uploadId)
           dispatch({ type: 'SET_REFRESHING', payload: true })
           
           // Use debounced refresh to handle multiple rapid events
