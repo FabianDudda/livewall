@@ -381,14 +381,68 @@ export default function EventDetail() {
     }
 
     try {
-      const { error } = await supabase
+      // First, find the upload to get the file URL
+      const uploadToDelete = uploads.find(upload => upload.id === uploadId)
+      if (!uploadToDelete) {
+        throw new Error('Upload nicht gefunden')
+      }
+
+      // Extract file path from URL for storage deletion
+      let filePath: string | null = null
+      try {
+        const url = new URL(uploadToDelete.file_url)
+        
+        // Try multiple URL patterns to extract the file path
+        const patterns = [
+          /\/object\/sign\/event-media\/(.+)$/,           // Signed URLs
+          /\/storage\/v1\/object\/public\/event-media\/(.+)$/,  // Public URLs  
+          /\/storage\/v1\/object\/sign\/event-media\/(.+)$/,    // Alternative signed URLs
+          /event-media\/(.+)$/                             // Simple pattern match
+        ]
+
+        for (const pattern of patterns) {
+          const pathMatch = url.pathname.match(pattern)
+          if (pathMatch) {
+            filePath = pathMatch[1]
+            break
+          }
+        }
+
+        if (!filePath) {
+          // Alternative: check if the URL contains event-media and extract everything after it
+          const eventMediaIndex = uploadToDelete.file_url.indexOf('event-media/')
+          if (eventMediaIndex !== -1) {
+            const afterEventMedia = uploadToDelete.file_url.substring(eventMediaIndex + 'event-media/'.length)
+            // Remove any query parameters
+            filePath = afterEventMedia.split('?')[0]
+          }
+        }
+
+      } catch (urlError) {
+        console.error('Error parsing file URL:', urlError)
+      }
+
+      // Delete from Supabase storage if we have a valid file path
+      if (filePath) {
+        const { error: storageError } = await supabase.storage
+          .from('event-media')
+          .remove([filePath])
+
+        if (storageError) {
+          console.error('Error deleting from storage:', storageError)
+          // Don't throw here - continue with database deletion even if storage deletion fails
+        }
+      }
+
+      // Delete from database
+      const { error: dbError } = await supabase
         .from('uploads')
         .delete()
         .eq('id', uploadId)
         .eq('event_id', eventId!)
 
-      if (error) {
-        throw error
+      if (dbError) {
+        throw dbError
       }
 
       // Update local state
@@ -400,9 +454,12 @@ export default function EventDetail() {
         totalUploads: prev.totalUploads - 1
       }))
 
+      // Show success message
+      alert('Upload erfolgreich gelöscht')
+
     } catch (error) {
       console.error('Error deleting upload:', error)
-      setError('Fehler beim Löschen des Uploads')
+      setError('Fehler beim Löschen des Uploads: ' + (error instanceof Error ? error.message : 'Unbekannter Fehler'))
     }
   }
 

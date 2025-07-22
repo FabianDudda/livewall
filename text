@@ -1,27 +1,16 @@
-analyze your code and ultrathink of a common and robust solution in `livewall-test/page.tsx` file to implement the following behavior:
-Give me different solutions and dont start before i give you the go
+**File**
+In event/[eventcode]/dashboard/page.tsx:
 
-Current Context:
-- The application displays images in a queue/slideshow format
-- Images are stored in a database with timestamps (newest to oldest)
-- There's currently a transition system that cycles through images
-- When new images are uploaded, they need to be inserted into the current display sequence
+**Context**
+Create a "Download All Images" functionality for the overview tab that matches the existing UI design pattern.
 
-Required Behavior:
-When a new image is uploaded:
-1. The new image should be displayed after the current image finishes its display cycle
-2. After showing the new image, continue with the remaining images in the original queue order
-3. Do not restart the queue from the beginning
-4. Make sure that new/old images dont glitch. New images should transition and behave the same as the old
+**Requirments**
+- Add a "Alle Bilder herunterladen" (Download All Images) button to the overview tab
+- The button should visually match the existing actions "QR Code herunterladen" and "Neue Challenge hinzufügen"
+- When clicked, it should collect all images from the gallery and create a downloadable ZIP file
+- The ZIP file should be named appropriately (e.g., "gallery-images-[timestamp].zip")
+- Include proper loading states and error handling
+- Maintain consistency with the existing German UI language
 
-Example Scenario:
-- Current queue: [Image A (newest), Image B, Image C, Image D, Image E (oldest)]
-- Currently displaying: Image B
-- New image X is uploaded
-- Expected sequence: Continue showing Image B → Show Image X → Continue with Image C → Image D → Image E
-
-Requirements:
-1. Examine the current implementation in `livewall-page/page.tsx`
-2. Identify how the image queue and transitions are currently managed
-3. Modify the code to insert newly uploaded images into the current position of the queue
-4. Ensure the transition timing and user experience remain smooth
+**Note**
+If you need any clarification for this task, please ask for the details.

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useReducer, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import { Image as ImageIcon } from 'lucide-react'
 import QRCode from '@/components/QRCode'
@@ -20,39 +20,143 @@ interface LiveMessage {
   messageIndex?: number
 }
 
+// Slideshow state interface
+interface SlideshowState {
+  uploads: Upload[]
+  stableUploads: Upload[]
+  originalUploads: Upload[]
+  currentImageIndex: number // Current image being displayed
+  showingSlotA: boolean // Which display slot is currently visible
+  isRefreshing: boolean
+  lastRefreshTime: number
+}
+
+// Slideshow actions
+type SlideshowAction =
+  | { type: 'UPLOADS_LOADED'; payload: Upload[] }
+  | { type: 'NEW_UPLOADS_DETECTED'; payload: Upload[] }
+  | { type: 'ADVANCE_SLIDESHOW' }
+  | { type: 'SET_REFRESHING'; payload: boolean }
+
+// Slideshow reducer
+function slideshowReducer(state: SlideshowState, action: SlideshowAction): SlideshowState {
+  switch (action.type) {
+    case 'UPLOADS_LOADED': {
+      const uploads = action.payload
+      return {
+        ...state,
+        uploads,
+        stableUploads: uploads,
+        originalUploads: uploads,
+        currentImageIndex: 0,
+        showingSlotA: true,
+        isRefreshing: false,
+        lastRefreshTime: Date.now()
+      }
+    }
+    
+    case 'NEW_UPLOADS_DETECTED': {
+      const latestUploads = action.payload
+      
+      console.log('✅ Processing NEW_UPLOADS_DETECTED with', latestUploads.length, 'uploads (was', state.stableUploads.length, ')')
+      
+      // Check for new uploads against original uploads
+      const existingIds = new Set(state.originalUploads.map(upload => upload.id))
+      const newUploadItems = latestUploads.filter(upload => !existingIds.has(upload.id))
+      
+      if (newUploadItems.length === 0) {
+        // No new uploads, just update the base arrays
+        return {
+          ...state,
+          uploads: latestUploads,
+          originalUploads: latestUploads,
+          isRefreshing: false,
+          lastRefreshTime: Date.now()
+        }
+      }
+      
+      console.log('🎯 Found', newUploadItems.length, 'new uploads, inserting after current position', state.currentImageIndex)
+      
+      // Insert new images after the current position in the slideshow queue
+      const insertPosition = state.currentImageIndex + 1
+      const newStableQueue = [
+        ...state.stableUploads.slice(0, insertPosition),
+        ...newUploadItems,
+        ...state.stableUploads.slice(insertPosition)
+      ]
+      
+      return {
+        ...state,
+        uploads: latestUploads,
+        stableUploads: newStableQueue,
+        originalUploads: latestUploads,
+        isRefreshing: false,
+        lastRefreshTime: Date.now()
+      }
+    }
+    
+    case 'ADVANCE_SLIDESHOW': {
+      const uploadsLength = state.stableUploads.length
+      if (uploadsLength <= 1) return state
+      
+      // Advance to next image and toggle which slot is visible
+      const nextImageIndex = (state.currentImageIndex + 1) % uploadsLength
+      return {
+        ...state,
+        currentImageIndex: nextImageIndex,
+        showingSlotA: !state.showingSlotA
+      }
+    }
+    
+    case 'SET_REFRESHING':
+      return {
+        ...state,
+        isRefreshing: action.payload
+      }
+    
+    default:
+      return state
+  }
+}
+
 export default function LivewallPage() {
   const params = useParams()
   const eventCode = params.eventcode as string
   const [eventId, setEventId] = useState<string | null>(null)
+  
+  // Initialize reducer state
+  const [state, dispatch] = useReducer(slideshowReducer, {
+    uploads: [],
+    stableUploads: [],
+    originalUploads: [],
+    currentImageIndex: 0,
+    showingSlotA: true,
+    isRefreshing: false,
+    lastRefreshTime: 0
+  })
 
   const [event, setEvent] = useState<Event | null>(null)
-  const [uploads, setUploads] = useState<Upload[]>([])
   const [challenges, setChallenges] = useState<Challenge[]>([])
   const [messages, setMessages] = useState<LiveMessage[]>([])
   const messageCounterRef = useRef(0)
-  const [currentIndex, setCurrentIndex] = useState(0)
-  const [nextIndex, setNextIndex] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [showingCurrent, setShowingCurrent] = useState(true) // true = show currentIndex, false = show nextIndex
-  const currentIndexRef = useRef(0)
-  const nextIndexRef = useRef(0)
-  const showingCurrentRef = useRef(true)
   
-  // Helper functions for persistent position storage using upload ID
-  const getStoredUploadId = () => {
-    if (typeof window !== 'undefined' && eventId) {
-      return localStorage.getItem(`livewall-upload-id-${eventId}`)
-    }
-    return null
-  }
+  // Refs for accessing current state in callbacks
+  const slideshowIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   
-  const setStoredUploadId = (uploadId: string) => {
-    if (typeof window !== 'undefined' && eventId) {
-      localStorage.setItem(`livewall-upload-id-${eventId}`, uploadId)
-    }
-  }
+  // Refs to maintain stable slot contents during transitions
+  const slotAImageRef = useRef<Upload | null>(null)
+  const slotBImageRef = useRef<Upload | null>(null)
   
+  // Create a ref to always access current state in interval
+  const stateRef = useRef(state)
+
+  // Sync stateRef with current state
+  useEffect(() => {
+    stateRef.current = state
+  }, [state])
 
   useEffect(() => {
     if (eventCode) {
@@ -60,38 +164,26 @@ export default function LivewallPage() {
     }
   }, [eventCode])
 
-  // Initialize position from localStorage when uploads are loaded
+
+  // Debounced refresh with specific event ID
+  const debouncedRefreshWithId = useCallback((targetEventId: string) => {
+    if (refreshTimeoutRef.current) {
+      clearTimeout(refreshTimeoutRef.current)
+    }
+    
+    refreshTimeoutRef.current = setTimeout(() => {
+      refreshUploadsWithId(targetEventId)
+    }, 300) // 300ms debounce
+  }, [])
+
+  // Cleanup timeouts on unmount
   useEffect(() => {
-    if (uploads.length > 0) {
-      const storedUploadId = getStoredUploadId()
-      if (storedUploadId) {
-        const storedIndex = uploads.findIndex(upload => upload.id === storedUploadId)
-        if (storedIndex !== -1) {
-          setCurrentIndex(storedIndex)
-          currentIndexRef.current = storedIndex
-        } else {
-          setCurrentIndex(0)
-          currentIndexRef.current = 0
-        }
-      } else {
-        setCurrentIndex(0)
-        currentIndexRef.current = 0
+    return () => {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current)
       }
     }
-  }, [uploads.length])
-
-  // Sync refs with state
-  useEffect(() => {
-    currentIndexRef.current = currentIndex
-  }, [currentIndex])
-  
-  useEffect(() => {
-    nextIndexRef.current = nextIndex
-  }, [nextIndex])
-  
-  useEffect(() => {
-    showingCurrentRef.current = showingCurrent
-  }, [showingCurrent])
+  }, [])
 
   const loadEventData = async () => {
     try {
@@ -137,7 +229,7 @@ export default function LivewallPage() {
       }
 
       const uploadData = uploadsResult.data || []
-      setUploads(uploadData)
+      dispatch({ type: 'UPLOADS_LOADED', payload: uploadData })
       setChallenges(challengesResult.data || [])
       
       setIsLoading(false)
@@ -176,29 +268,47 @@ export default function LivewallPage() {
     }
   }, [eventId])
 
-  // Auto-refresh uploads only (not the whole page)
+  // Listen for real-time uploads changes - debounced to handle simultaneous events
   useEffect(() => {
-    const intervalTime = (event?.auto_refresh_interval || 30) * 1000
-    const interval = setInterval(() => {
-      if (eventId) {
-        refreshUploads()
-     
-      }
-    }, intervalTime)
+    const currentEventId = eventId || event?.id
+    if (!currentEventId) return
 
-    return () => clearInterval(interval)
-  }, [eventId, event?.auto_refresh_interval])
+    const channel = supabase
+      .channel(`uploads-${currentEventId}`)
+      .on('postgres_changes', 
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'uploads',
+          filter: `event_id=eq.${currentEventId}`
+        }, 
+        (payload) => {
+          const uploadId = (payload.new as Record<string, unknown>)?.id || 'unknown'
+          console.log('🔔 Realtime upload change detected:', payload.eventType, uploadId)
+          dispatch({ type: 'SET_REFRESHING', payload: true })
+          
+          // Use debounced refresh to handle multiple rapid events
+          debouncedRefreshWithId(currentEventId)
+        }
+      )
+      .subscribe()
 
-  // Refresh only uploads data without interrupting slideshow
-  const refreshUploads = async () => {
+    return () => {
+      channel.unsubscribe()
+    }
+  }, [eventId, event?.id])
+
+  // Refresh uploads data with specific event ID
+  const refreshUploadsWithId = async (targetEventId: string) => {
+    console.log('🔄 refreshUploadsWithId called! eventId:', targetEventId)
     try {
-      if (!eventId) return
+      console.log('🔄 Refreshing uploads...')
 
       // Load only approved uploads
       const { data: uploadsData, error: uploadsError } = await supabase
         .from('uploads')
         .select('*')
-        .eq('event_id', eventId)
+        .eq('event_id', targetEventId)
         .eq('approved', true)
         .order('created_at', { ascending: false })
 
@@ -207,54 +317,114 @@ export default function LivewallPage() {
         return
       }
 
-      const newUploads = uploadsData || []
-      setUploads(newUploads)
+      const latestUploads = uploadsData || []
+      console.log('📥 Loaded uploads:', latestUploads.length)
+      
+      // Dispatch the new uploads - reducer will handle all logic atomically
+      dispatch({ type: 'NEW_UPLOADS_DETECTED', payload: latestUploads })
+      
     } catch (error) {
       console.error('Error refreshing uploads:', error)
+      dispatch({ type: 'SET_REFRESHING', payload: false })
     }
   }
 
-  // Simplified crossfade slideshow functionality
-  useEffect(() => {
-    if (uploads.length <= 1) return
+  // Refresh uploads data and handle new uploads atomically
+  const refreshUploads = async () => {
+    const currentEventId = eventId || event?.id
+    console.log('🔄 refreshUploads called! eventId:', currentEventId)
+    if (!currentEventId) {
+      console.log('❌ No eventId, returning early')
+      return
+    }
+    
+    await refreshUploadsWithId(currentEventId)
+  }
 
+
+  // Function to start slideshow interval
+  const startSlideshowInterval = () => {
     const displayDuration = (event?.image_display_duration || 10) * 1000
     
+    console.log('🎬 Starting slideshow interval with duration:', displayDuration)
+    
     const interval = setInterval(() => {
-      // Use refs to get current values without dependencies
-      const isShowingCurrent = showingCurrentRef.current
-      const currentIdx = currentIndexRef.current
-      const nextIdx = nextIndexRef.current
+      const currentState = stateRef.current
       
-      // Prepare next image
-      const newNextIndex = isShowingCurrent ? (currentIdx + 1) % uploads.length : (nextIdx + 1) % uploads.length
+      console.log('⏰ Slideshow tick - current state:', {
+        currentImageIndex: currentState.currentImageIndex,
+        showingSlotA: currentState.showingSlotA,
+        totalUploads: currentState.stableUploads.length
+      })
       
-      if (isShowingCurrent) {
-        // Currently showing currentIndex, prepare nextIndex
-        setNextIndex(newNextIndex)
-        
-        // Store the upload ID for persistence
-        if (uploads[newNextIndex]) {
-          setStoredUploadId(uploads[newNextIndex].id)
-        }
-        
-        // Start crossfade to next image
-        setTimeout(() => {
-          setShowingCurrent(false)
-        }, 50)
-      } else {
-        // Currently showing nextIndex, prepare currentIndex
-        setCurrentIndex(newNextIndex)
-        
-        // Start crossfade to current image
-        setTimeout(() => {
-          setShowingCurrent(true)
-        }, 50)
+      if (currentState.stableUploads.length <= 1) {
+        console.log('⚠️ Not enough uploads for slideshow')
+        return
       }
+      
+      console.log('➡️ Advancing slideshow')
+      dispatch({ type: 'ADVANCE_SLIDESHOW' })
     }, displayDuration)
+    
+    slideshowIntervalRef.current = interval
+    return interval
+  }
 
-    return () => clearInterval(interval)
-  }, [uploads.length, event?.image_display_duration])
+  // Slideshow effect - only start/stop based on having uploads, not on count changes
+  useEffect(() => {
+    const hasEnoughUploads = state.stableUploads.length > 1
+    
+    if (hasEnoughUploads && !slideshowIntervalRef.current) {
+      // Start slideshow if we have enough uploads and no interval running
+      console.log('🎬 Starting slideshow with', state.stableUploads.length, 'uploads')
+      startSlideshowInterval()
+    } else if (!hasEnoughUploads && slideshowIntervalRef.current) {
+      // Stop slideshow if we don't have enough uploads
+      console.log('🛑 Stopping slideshow - not enough uploads')
+      clearInterval(slideshowIntervalRef.current)
+      slideshowIntervalRef.current = null
+    }
+
+    return () => {
+      if (slideshowIntervalRef.current) {
+        clearInterval(slideshowIntervalRef.current)
+        slideshowIntervalRef.current = null
+      }
+    }
+  }, [state.stableUploads.length > 1, event?.image_display_duration])
+
+  // Update slot images only when appropriate
+  useEffect(() => {
+    if (state.stableUploads.length === 0) return
+    
+    const currentImage = state.stableUploads[state.currentImageIndex]
+    const nextImageIndex = (state.currentImageIndex + 1) % state.stableUploads.length
+    const nextImage = state.stableUploads[nextImageIndex]
+    
+    if (state.showingSlotA) {
+      // Slot A is visible - it should show current image
+      slotAImageRef.current = currentImage
+      // Only update slot B (hidden) if it doesn't already have the next image
+      if (!slotBImageRef.current || slotBImageRef.current !== nextImage) {
+        slotBImageRef.current = nextImage
+      }
+    } else {
+      // Slot B is visible - it should show current image  
+      slotBImageRef.current = currentImage
+      // Only update slot A (hidden) if it doesn't already have the next image
+      if (!slotAImageRef.current || slotAImageRef.current !== nextImage) {
+        slotAImageRef.current = nextImage
+      }
+    }
+  }, [state.currentImageIndex, state.showingSlotA, state.stableUploads])
+  
+  // Initialize refs on first load
+  useEffect(() => {
+    if (state.stableUploads.length > 0 && !slotAImageRef.current) {
+      slotAImageRef.current = state.stableUploads[0]
+      slotBImageRef.current = state.stableUploads[1] || state.stableUploads[0]
+    }
+  }, [state.stableUploads])
 
   if (isLoading) {
     return (
@@ -279,7 +449,7 @@ export default function LivewallPage() {
     )
   }
 
-  if (uploads.length === 0) {
+  if (state.stableUploads.length === 0) {
     return (
       <div className={`min-h-screen bg-gradient-to-br ${event?.livewall_background_gradient || 'from-purple-900 via-blue-900 to-indigo-900'} flex items-center justify-center relative`}>
         {/* QR Code */}
@@ -297,8 +467,10 @@ export default function LivewallPage() {
     )
   }
 
-  const currentUpload = uploads[currentIndex]
-  const nextUpload = uploads[nextIndex]
+  
+  const slotAImage = slotAImageRef.current
+  const slotBImage = slotBImageRef.current
+  
   const uploadUrl = `${window.location.origin}/event/${eventCode}/upload`
 
   // Get challenge for upload
@@ -312,66 +484,72 @@ export default function LivewallPage() {
     <div className={`min-h-screen bg-gradient-to-br ${event?.livewall_background_gradient || 'from-purple-900 via-blue-900 to-indigo-900'} flex items-center justify-center relative overflow-hidden`}>
       {/* Crossfade Images - Two overlapping image containers */}
       
-      {/* Current Image */}
-      {currentUpload && (
-        <div className={`absolute transition-opacity duration-1000 ease-in-out ${showingCurrent ? 'opacity-100' : 'opacity-0'}`}>
+      {/* Slot A */}
+      {slotAImage && (
+        <div 
+          data-slot-a
+          className={`absolute transition-opacity duration-1000 ease-in-out ${state.showingSlotA ? 'opacity-100' : 'opacity-0'}`}
+        >
           <div className="bg-white p-6 pb-20 rounded-lg shadow-2xl rotate-1 transition-transform duration-300 max-w-6xl max-h-[90vh] mx-auto">
             <div className="relative">
               <img
-                src={currentUpload.file_url}
-                alt={currentUpload.comment || 'Foto'}
+                src={slotAImage.file_url}
+                alt={slotAImage.comment || 'Foto'}
                 className="w-full h-auto max-h-[75vh] object-contain rounded-sm"
                 style={{ aspectRatio: 'auto' }}
               />
               
-              {getChallenge(currentUpload) && (
+              {getChallenge(slotAImage) && (
                 <div className="absolute top-4 right-4 bg-black bg-opacity-75 text-white px-3 py-1 rounded-full text-sm font-medium">
-                  #{getChallenge(currentUpload)?.hashtag || getChallenge(currentUpload)?.title.toLowerCase().replace(/\s+/g, '')}
+                  #{getChallenge(slotAImage)?.hashtag || getChallenge(slotAImage)?.title.toLowerCase().replace(/\s+/g, '')}
                 </div>
               )}
             </div>
             
             <div className="mt-6 text-center">
-              {currentUpload.comment && (
+              {slotAImage.comment && (
                 <p className="text-gray-800 text-xl leading-relaxed mb-2" style={{ fontFamily: 'var(--font-kalam), cursive' }}>
-                  {currentUpload.comment}
+                  {slotAImage.comment}
                 </p>
               )}
               <p className="text-gray-600 text-base" style={{ fontFamily: 'var(--font-kalam), cursive' }}>
-                - {currentUpload.uploader_name || 'Anonym'}
+                - {slotAImage.uploader_name || 'Anonym'}
               </p>
             </div>
           </div>
         </div>
       )}
 
-      {/* Next Image */}
-      {nextUpload && (
-        <div className={`absolute transition-opacity duration-1000 ease-in-out ${!showingCurrent ? 'opacity-100' : 'opacity-0'}`}>
+      {/* Slot B */}
+      {slotBImage && (
+        <div 
+          data-slot-b
+          className={`absolute transition-opacity duration-1000 ease-in-out ${!state.showingSlotA ? 'opacity-100' : 'opacity-0'}`}
+        >
           <div className="bg-white p-6 pb-20 rounded-lg shadow-2xl rotate-1 transition-transform duration-300 max-w-6xl max-h-[90vh] mx-auto">
             <div className="relative">
               <img
-                src={nextUpload.file_url}
-                alt={nextUpload.comment || 'Foto'}
+                src={slotBImage.file_url}
+                alt={slotBImage.comment || 'Foto'}
                 className="w-full h-auto max-h-[75vh] object-contain rounded-sm"
                 style={{ aspectRatio: 'auto' }}
               />
               
-              {getChallenge(nextUpload) && (
+              {getChallenge(slotBImage) && (
                 <div className="absolute top-4 right-4 bg-black bg-opacity-75 text-white px-3 py-1 rounded-full text-sm font-medium">
-                  #{getChallenge(nextUpload)?.hashtag || getChallenge(nextUpload)?.title.toLowerCase().replace(/\s+/g, '')}
+                  #{getChallenge(slotBImage)?.hashtag || getChallenge(slotBImage)?.title.toLowerCase().replace(/\s+/g, '')}
                 </div>
               )}
             </div>
             
             <div className="mt-6 text-center">
-              {nextUpload.comment && (
+              {slotBImage.comment && (
                 <p className="text-gray-800 text-xl leading-relaxed mb-2" style={{ fontFamily: 'var(--font-kalam), cursive' }}>
-                  {nextUpload.comment}
+                  {slotBImage.comment}
                 </p>
               )}
               <p className="text-gray-600 text-base" style={{ fontFamily: 'var(--font-kalam), cursive' }}>
-                - {nextUpload.uploader_name || 'Anonym'}
+                - {slotBImage.uploader_name || 'Anonym'}
               </p>
             </div>
           </div>
@@ -406,11 +584,6 @@ export default function LivewallPage() {
           </div>
         </div>
       ))}
-
-      {/* QR Code */}
-      <div className="absolute bottom-8 right-8 z-50">
-        <QRCode value={uploadUrl} size={120} />
-      </div>
     </div>
   )
 }
