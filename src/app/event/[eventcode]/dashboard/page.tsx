@@ -52,6 +52,7 @@ export default function EventDetail() {
   const [autoRefreshInterval, setAutoRefreshInterval] = useState(30)
   const [uploadHeaderGradient, setUploadHeaderGradient] = useState('from-gray-50 to-white')
   const [livewallBackgroundGradient, setLivewallBackgroundGradient] = useState('from-purple-900 via-blue-900 to-indigo-900')
+  const [orderingMode, setOrderingMode] = useState<'insertion' | 'newest-first'>('insertion')
 
   useEffect(() => {
     if (!loading && !user) {
@@ -100,6 +101,9 @@ export default function EventDetail() {
       // Initialize gradient settings
       setUploadHeaderGradient(eventData.upload_header_gradient || 'from-gray-50 to-white')
       setLivewallBackgroundGradient(eventData.livewall_background_gradient || 'from-purple-900 via-blue-900 to-indigo-900')
+      
+      // Initialize ordering mode
+      setOrderingMode(eventData.ordering_mode || 'insertion')
       
       // Retrieve current password if exists
       if (eventData.password) {
@@ -251,6 +255,7 @@ export default function EventDetail() {
         auto_refresh_interval: autoRefreshInterval,
         upload_header_gradient: uploadHeaderGradient,
         livewall_background_gradient: livewallBackgroundGradient,
+        ordering_mode: orderingMode,
         updated_at: new Date().toISOString()
       }
 
@@ -1280,6 +1285,42 @@ export default function EventDetail() {
                         />
                       ))}
                     </div>
+                  </div>
+                </div>
+
+                {/* Livewall Ordering Mode */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-sm font-medium text-gray-700">
+                      Anzeige-Reihenfolge
+                    </label>
+                    <p className="text-xs text-gray-500">
+                      Bestimmt die Reihenfolge der Bilder in der Live-Fotowand
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <button
+                      type="button"
+                      onClick={() => setOrderingMode('insertion')}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${orderingMode === 'insertion' ? 'bg-blue-100 text-blue-800 border-2 border-blue-300' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                      disabled={isUpdating}
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${orderingMode === 'insertion' ? 'bg-blue-500' : 'bg-gray-400'}`}></div>
+                        Einfüge-Reihenfolge
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOrderingMode('newest-first')}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${orderingMode === 'newest-first' ? 'bg-green-100 text-green-800 border-2 border-green-300' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                      disabled={isUpdating}
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${orderingMode === 'newest-first' ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+                        Neueste zuerst
+                      </div>
+                    </button>
                   </div>
                 </div>
 

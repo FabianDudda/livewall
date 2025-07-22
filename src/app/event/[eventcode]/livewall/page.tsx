@@ -20,6 +20,9 @@ interface LiveMessage {
   messageIndex?: number
 }
 
+// Slideshow ordering modes
+type SlideshowOrderingMode = 'insertion' | 'newest-first'
+
 // Slideshow state interface
 interface SlideshowState {
   uploads: Upload[]
@@ -29,6 +32,8 @@ interface SlideshowState {
   showingSlotA: boolean // Which display slot is currently visible
   isRefreshing: boolean
   lastRefreshTime: number
+  orderingMode: SlideshowOrderingMode
+  hasCompletedRound: boolean // Tracks if we've shown the oldest image
 }
 
 // Slideshow actions
@@ -37,6 +42,9 @@ type SlideshowAction =
   | { type: 'NEW_UPLOADS_DETECTED'; payload: Upload[] }
   | { type: 'ADVANCE_SLIDESHOW' }
   | { type: 'SET_REFRESHING'; payload: boolean }
+  | { type: 'TOGGLE_ORDERING_MODE' }
+  | { type: 'SET_ORDERING_MODE'; payload: SlideshowOrderingMode }
+  | { type: 'REORDER_FOR_NEW_ROUND' }
 
 // Slideshow reducer
 function slideshowReducer(state: SlideshowState, action: SlideshowAction): SlideshowState {
@@ -51,7 +59,8 @@ function slideshowReducer(state: SlideshowState, action: SlideshowAction): Slide
         currentImageIndex: 0,
         showingSlotA: true,
         isRefreshing: false,
-        lastRefreshTime: Date.now()
+        lastRefreshTime: Date.now(),
+        hasCompletedRound: false
       }
     }
     
@@ -91,7 +100,8 @@ function slideshowReducer(state: SlideshowState, action: SlideshowAction): Slide
         stableUploads: newStableQueue,
         originalUploads: latestUploads,
         isRefreshing: false,
-        lastRefreshTime: Date.now()
+        lastRefreshTime: Date.now(),
+        hasCompletedRound: false // Reset when new uploads arrive
       }
     }
     
@@ -99,12 +109,24 @@ function slideshowReducer(state: SlideshowState, action: SlideshowAction): Slide
       const uploadsLength = state.stableUploads.length
       if (uploadsLength <= 1) return state
       
+      // Check if we're currently on the last image (about to complete a round)
+      const isOnLastImage = state.currentImageIndex === uploadsLength - 1
+      
       // Advance to next image and toggle which slot is visible
       const nextImageIndex = (state.currentImageIndex + 1) % uploadsLength
+      const currentImage = state.stableUploads[nextImageIndex]
+      
+      // Log the image ID that is now being displayed
+      console.log('📸 Now displaying image ID:', currentImage?.id)
+      
+      // Mark round as completed if we just showed the last image
+      const hasCompletedRound = state.hasCompletedRound || isOnLastImage
+      
       return {
         ...state,
         currentImageIndex: nextImageIndex,
-        showingSlotA: !state.showingSlotA
+        showingSlotA: !state.showingSlotA,
+        hasCompletedRound
       }
     }
     
@@ -113,6 +135,39 @@ function slideshowReducer(state: SlideshowState, action: SlideshowAction): Slide
         ...state,
         isRefreshing: action.payload
       }
+    
+    case 'TOGGLE_ORDERING_MODE':
+      return {
+        ...state,
+        orderingMode: state.orderingMode === 'insertion' ? 'newest-first' : 'insertion',
+        hasCompletedRound: false // Reset round tracking when mode changes
+      }
+    
+    case 'SET_ORDERING_MODE':
+      return {
+        ...state,
+        orderingMode: action.payload,
+        hasCompletedRound: false // Reset round tracking when mode changes
+      }
+    
+    case 'REORDER_FOR_NEW_ROUND': {
+      if (state.orderingMode === 'insertion' || !state.hasCompletedRound) {
+        return state // No reordering needed
+      }
+      
+      // Reorder to newest-first (descending by created_at)
+      const reorderedUploads = [...state.stableUploads].sort((a, b) => 
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      )
+      
+      return {
+        ...state,
+        stableUploads: reorderedUploads,
+        currentImageIndex: 0,
+        hasCompletedRound: false
+        // Keep the current showingSlotA to avoid slot conflicts
+      }
+    }
     
     default:
       return state
@@ -132,7 +187,9 @@ export default function LivewallPage() {
     currentImageIndex: 0,
     showingSlotA: true,
     isRefreshing: false,
-    lastRefreshTime: 0
+    lastRefreshTime: 0,
+    orderingMode: 'insertion' as SlideshowOrderingMode,
+    hasCompletedRound: false
   })
 
   const [event, setEvent] = useState<Event | null>(null)
@@ -232,6 +289,14 @@ export default function LivewallPage() {
       dispatch({ type: 'UPLOADS_LOADED', payload: uploadData })
       setChallenges(challengesResult.data || [])
       
+      // Set ordering mode from event data
+      if (event.ordering_mode && event.ordering_mode !== state.orderingMode) {
+        const orderingMode = event.ordering_mode as SlideshowOrderingMode
+        if (orderingMode === 'insertion' || orderingMode === 'newest-first') {
+          dispatch({ type: 'SET_ORDERING_MODE', payload: orderingMode })
+        }
+      }
+      
       setIsLoading(false)
 
     } catch (err) {
@@ -298,6 +363,39 @@ export default function LivewallPage() {
     }
   }, [eventId, event?.id])
 
+  // Listen for real-time event settings changes (ordering mode)
+  useEffect(() => {
+    const currentEventId = eventId || event?.id
+    if (!currentEventId) return
+
+    const channel = supabase
+      .channel(`event-settings-${currentEventId}`)
+      .on('postgres_changes', 
+        { 
+          event: 'UPDATE', 
+          schema: 'public', 
+          table: 'events',
+          filter: `id=eq.${currentEventId}`
+        }, 
+        (payload) => {
+          const updatedEvent = payload.new as Event
+          console.log('🔔 Event settings updated:', updatedEvent.ordering_mode)
+          
+          if (updatedEvent.ordering_mode && updatedEvent.ordering_mode !== state.orderingMode) {
+            const orderingMode = updatedEvent.ordering_mode as SlideshowOrderingMode
+            if (orderingMode === 'insertion' || orderingMode === 'newest-first') {
+              dispatch({ type: 'SET_ORDERING_MODE', payload: orderingMode })
+            }
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      channel.unsubscribe()
+    }
+  }, [eventId, event?.id, state.orderingMode])
+
   // Refresh uploads data with specific event ID
   const refreshUploadsWithId = async (targetEventId: string) => {
     console.log('🔄 refreshUploadsWithId called! eventId:', targetEventId)
@@ -363,7 +461,33 @@ export default function LivewallPage() {
       }
       
       console.log('➡️ Advancing slideshow')
+      
+      // Check if we're about to complete a round (on the last image) and need reordering
+      const isOnLastImage = currentState.currentImageIndex === currentState.stableUploads.length - 1
+      const shouldReorderAfter = isOnLastImage && currentState.orderingMode === 'newest-first'
+      
       dispatch({ type: 'ADVANCE_SLIDESHOW' })
+      
+      // If we just completed a round, reorder for next round
+      if (shouldReorderAfter) {
+        // Clear the interval temporarily to prevent conflicts during reordering
+        if (slideshowIntervalRef.current) {
+          clearInterval(slideshowIntervalRef.current)
+          slideshowIntervalRef.current = null
+        }
+        
+        setTimeout(() => {
+          console.log('🔄 Reordering for new round')
+          dispatch({ type: 'REORDER_FOR_NEW_ROUND' })
+          
+          // Restart the slideshow interval after reordering
+          setTimeout(() => {
+            if (!slideshowIntervalRef.current) {
+              startSlideshowInterval()
+            }
+          }, 100) // Small delay to ensure state is updated
+        }, 1000) // Delay to allow current transition to complete
+      }
     }, displayDuration)
     
     slideshowIntervalRef.current = interval
@@ -560,6 +684,7 @@ export default function LivewallPage() {
       <div className="absolute bottom-8 right-8 z-50">
         <QRCode value={uploadUrl} size={120} />
       </div>
+
 
       {/* Messages */}
       {messages.map((message) => (
