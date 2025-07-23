@@ -81,9 +81,9 @@ export default function Dashboard() {
       updated_at: newEvent.created_at,
       user_id: user?.id || '',
       image_display_duration: 10,
-      auto_refresh_interval: 30,
       upload_header_gradient: 'from-gray-50 to-white',
-      livewall_background_gradient: 'from-purple-900 via-blue-900 to-indigo-900'
+      livewall_background_gradient: 'from-purple-900 via-blue-900 to-indigo-900',
+      ordering_mode: 'newest-first'
     }
     setEvents(prev => [fullEvent, ...prev])
     setIsEventModalOpen(false)

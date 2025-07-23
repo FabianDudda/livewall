@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
-import { LogOut, ArrowLeft, Users, Image, Target, Copy, ExternalLink, QrCode, Plus, Grid, List, Check, X, Eye, Trash2, EyeOff } from 'lucide-react'
+import { LogOut, ArrowLeft, Users, Image, Target, Copy, ExternalLink, QrCode, Plus, Grid, List, Check, X, Eye, Trash2, EyeOff, Download } from 'lucide-react'
 import SimpleImageGallery from '@/components/SimpleImageGallery'
 import { supabase } from '@/lib/supabase'
 import { Database } from '@/lib/supabase'
@@ -49,10 +49,9 @@ export default function EventDetail() {
   const [showChallengeModal, setShowChallengeModal] = useState(false)
   const [editingChallenge, setEditingChallenge] = useState<Challenge | null>(null)
   const [imageDisplayDuration, setImageDisplayDuration] = useState(10)
-  const [autoRefreshInterval, setAutoRefreshInterval] = useState(30)
   const [uploadHeaderGradient, setUploadHeaderGradient] = useState('from-gray-50 to-white')
   const [livewallBackgroundGradient, setLivewallBackgroundGradient] = useState('from-purple-900 via-blue-900 to-indigo-900')
-  const [orderingMode, setOrderingMode] = useState<'insertion' | 'newest-first'>('insertion')
+  const [isDownloadingImages, setIsDownloadingImages] = useState(false)
 
   useEffect(() => {
     if (!loading && !user) {
@@ -96,14 +95,11 @@ export default function EventDetail() {
       
       // Initialize timing settings
       setImageDisplayDuration(eventData.image_display_duration || 10)
-      setAutoRefreshInterval(eventData.auto_refresh_interval || 30)
       
       // Initialize gradient settings
       setUploadHeaderGradient(eventData.upload_header_gradient || 'from-gray-50 to-white')
       setLivewallBackgroundGradient(eventData.livewall_background_gradient || 'from-purple-900 via-blue-900 to-indigo-900')
       
-      // Initialize ordering mode
-      setOrderingMode(eventData.ordering_mode || 'insertion')
       
       // Retrieve current password if exists
       if (eventData.password) {
@@ -252,10 +248,9 @@ export default function EventDetail() {
         password_protected: passwordProtected,
         password: encryptedPassword,
         image_display_duration: imageDisplayDuration,
-        auto_refresh_interval: autoRefreshInterval,
         upload_header_gradient: uploadHeaderGradient,
         livewall_background_gradient: livewallBackgroundGradient,
-        ordering_mode: orderingMode,
+
         updated_at: new Date().toISOString()
       }
 
@@ -392,35 +387,18 @@ export default function EventDetail() {
         throw new Error('Upload nicht gefunden')
       }
 
-      // Extract file path from URL for storage deletion
+      // Extract file path from public bucket URL
       let filePath: string | null = null
       try {
         const url = new URL(uploadToDelete.file_url)
         
-        // Try multiple URL patterns to extract the file path
-        const patterns = [
-          /\/object\/sign\/event-media\/(.+)$/,           // Signed URLs
-          /\/storage\/v1\/object\/public\/event-media\/(.+)$/,  // Public URLs  
-          /\/storage\/v1\/object\/sign\/event-media\/(.+)$/,    // Alternative signed URLs
-          /event-media\/(.+)$/                             // Simple pattern match
-        ]
-
-        for (const pattern of patterns) {
-          const pathMatch = url.pathname.match(pattern)
-          if (pathMatch) {
-            filePath = pathMatch[1]
-            break
-          }
-        }
-
-        if (!filePath) {
-          // Alternative: check if the URL contains event-media and extract everything after it
-          const eventMediaIndex = uploadToDelete.file_url.indexOf('event-media/')
-          if (eventMediaIndex !== -1) {
-            const afterEventMedia = uploadToDelete.file_url.substring(eventMediaIndex + 'event-media/'.length)
-            // Remove any query parameters
-            filePath = afterEventMedia.split('?')[0]
-          }
+        // For public bucket URLs, extract path after /storage/v1/object/public/event-media/
+        const publicUrlPattern = /\/storage\/v1\/object\/public\/event-media\/(.+)$/
+        const pathMatch = url.pathname.match(publicUrlPattern)
+        
+        if (pathMatch) {
+          // Remove any query parameters from the file path
+          filePath = pathMatch[1].split('?')[0]
         }
 
       } catch (urlError) {
@@ -484,6 +462,91 @@ export default function EventDetail() {
     } catch (error) {
       console.error('Error downloading QR code:', error)
       setError('Fehler beim Herunterladen des QR-Codes')
+    }
+  }
+
+  const handleDownloadAllImages = async () => {
+    if (!event || uploads.length === 0) return
+
+    setIsDownloadingImages(true)
+    setError(null)
+
+    try {
+      // Dynamic import of JSZip to avoid bundling it unnecessarily
+      const JSZip = (await import('jszip')).default
+      const zip = new JSZip()
+
+      // Filter for approved images only
+      const approvedUploads = uploads.filter(upload => upload.approved)
+
+      if (approvedUploads.length === 0) {
+        alert('Keine freigegebenen Bilder zum Herunterladen verfügbar.')
+        return
+      }
+
+      // Create a folder for the images
+      const imageFolder = zip.folder('event-images')
+
+      // Download and add each image to the ZIP
+      const downloadPromises = approvedUploads.map(async (upload, index) => {
+        try {
+          const response = await fetch(upload.file_url)
+          if (!response.ok) {
+            throw new Error(`Failed to fetch image: ${response.statusText}`)
+          }
+          
+          const blob = await response.blob()
+          
+          // Get file extension from URL or use jpg as default
+          let fileExtension = 'jpg'
+          try {
+            const url = new URL(upload.file_url)
+            const pathMatch = url.pathname.match(/\.([^./?]+)(?:[?#]|$)/)
+            if (pathMatch) {
+              fileExtension = pathMatch[1].toLowerCase()
+            }
+          } catch (urlError) {
+            // Keep default extension
+          }
+          
+          // Create filename with index, uploader name (if available), and extension
+          const uploaderName = upload.uploader_name || 'unbekannt'
+          const sanitizedUploaderName = uploaderName.replace(/[^a-zA-Z0-9-_]/g, '_')
+          const filename = `${String(index + 1).padStart(3, '0')}_${sanitizedUploaderName}.${fileExtension}`
+          
+          imageFolder?.file(filename, blob)
+        } catch (imageError) {
+          console.error(`Error downloading image ${index + 1}:`, imageError)
+          // Continue with other images even if one fails
+        }
+      })
+
+      // Wait for all downloads to complete
+      await Promise.all(downloadPromises)
+
+      // Generate ZIP file
+      const zipBlob = await zip.generateAsync({ type: 'blob' })
+
+      // Create download link
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(zipBlob)
+      
+      // Create timestamp for filename
+      const timestamp = new Date().toISOString().slice(0, 16).replace(/[:-]/g, '_')
+      link.download = `${event.name}_bilder_${timestamp}.zip`
+      
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      
+      // Clean up the object URL
+      URL.revokeObjectURL(link.href)
+
+    } catch (error) {
+      console.error('Error downloading all images:', error)
+      setError('Fehler beim Herunterladen der Bilder')
+    } finally {
+      setIsDownloadingImages(false)
     }
   }
 
@@ -798,7 +861,7 @@ export default function EventDetail() {
             </div>
 
             {/* Actions */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <button 
                 onClick={handleDownloadQRCode}
                 className="bg-white p-6 rounded-lg shadow-sm border hover:shadow-md transition-shadow text-left"
@@ -810,6 +873,30 @@ export default function EventDetail() {
                   <div>
                     <h3 className="font-semibold text-gray-900">QR Code herunterladen</h3>
                     <p className="text-gray-600 text-sm">QR-Code für Upload-Seite</p>
+                  </div>
+                </div>
+              </button>
+
+              <button 
+                onClick={handleDownloadAllImages}
+                disabled={isDownloadingImages || uploads.filter(upload => upload.approved).length === 0}
+                className="bg-white p-6 rounded-lg shadow-sm border hover:shadow-md transition-shadow text-left disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="bg-blue-100 p-3 rounded-full">
+                    {isDownloadingImages ? (
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                    ) : (
+                      <Download className="w-6 h-6 text-blue-600" />
+                    )}
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900">Alle Bilder herunterladen</h3>
+                    <p className="text-gray-600 text-sm">
+                      {isDownloadingImages 
+                        ? 'Lade Bilder herunter...' 
+                        : `${uploads.filter(upload => upload.approved).length} freigegebene Bilder als ZIP`}
+                    </p>
                   </div>
                 </div>
               </button>
@@ -1194,32 +1281,6 @@ export default function EventDetail() {
                   </p>
                 </div>
 
-                {/* Auto Refresh Interval Slider */}
-                <div>
-                  <label htmlFor="autoRefreshInterval" className="block text-sm font-medium text-gray-700 mb-2">
-                    Auto-Aktualisierung: {autoRefreshInterval < 60 ? `${autoRefreshInterval}s` : `${Math.round(autoRefreshInterval / 60)}min`}
-                  </label>
-                  <div className="space-y-2">
-                    <input
-                      id="autoRefreshInterval"
-                      type="range"
-                      min="15"
-                      max="300"
-                      step="15"
-                      value={autoRefreshInterval}
-                      onChange={(e) => setAutoRefreshInterval(parseInt(e.target.value))}
-                      disabled={isUpdating}
-                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
-                    />
-                    <div className="flex justify-between text-xs text-gray-500">
-                      <span>15s</span>
-                      <span>5min</span>
-                    </div>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Wie oft wird nach neuen Uploads gesucht
-                  </p>
-                </div>
 
                 {/* Gradient Settings */}
                 <div className="space-y-6">
@@ -1288,41 +1349,7 @@ export default function EventDetail() {
                   </div>
                 </div>
 
-                {/* Livewall Ordering Mode */}
-                <div className="flex items-center justify-between">
-                  <div>
-                    <label className="text-sm font-medium text-gray-700">
-                      Anzeige-Reihenfolge
-                    </label>
-                    <p className="text-xs text-gray-500">
-                      Bestimmt die Reihenfolge der Bilder in der Live-Fotowand
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <button
-                      type="button"
-                      onClick={() => setOrderingMode('insertion')}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${orderingMode === 'insertion' ? 'bg-blue-100 text-blue-800 border-2 border-blue-300' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                      disabled={isUpdating}
-                    >
-                      <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${orderingMode === 'insertion' ? 'bg-blue-500' : 'bg-gray-400'}`}></div>
-                        Einfüge-Reihenfolge
-                      </div>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setOrderingMode('newest-first')}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${orderingMode === 'newest-first' ? 'bg-green-100 text-green-800 border-2 border-green-300' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                      disabled={isUpdating}
-                    >
-                      <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${orderingMode === 'newest-first' ? 'bg-green-500' : 'bg-gray-400'}`}></div>
-                        Neueste zuerst
-                      </div>
-                    </button>
-                  </div>
-                </div>
+            
 
                 <div className="flex gap-3 pt-4">
                   <button

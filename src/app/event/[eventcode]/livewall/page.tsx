@@ -112,12 +112,34 @@ function slideshowReducer(state: SlideshowState, action: SlideshowAction): Slide
       // Check if we're currently on the last image (about to complete a round)
       const isOnLastImage = state.currentImageIndex === uploadsLength - 1
       
-      // Advance to next image and toggle which slot is visible
+      // If we're on the last image and in newest-first mode, trigger reordering
+      if (isOnLastImage && state.orderingMode === 'newest-first') {
+        console.log('🔄 Completing round, reordering to newest-first')
+        console.log('📊 Before reorder - queue:', state.stableUploads.map(u => u.id))
+        
+        // Reorder to newest-first (descending by created_at)
+        const reorderedUploads = [...state.stableUploads].sort((a, b) => 
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        )
+        
+        console.log('📊 After reorder - queue:', reorderedUploads.map(u => u.id))
+        console.log('📊 Setting currentImageIndex to 0, newest image:', reorderedUploads[0]?.id)
+        
+        return {
+          ...state,
+          stableUploads: reorderedUploads,
+          currentImageIndex: 0,
+          showingSlotA: !state.showingSlotA,
+          hasCompletedRound: false
+        }
+      }
+      
+      // Normal advance to next image
       const nextImageIndex = (state.currentImageIndex + 1) % uploadsLength
       const currentImage = state.stableUploads[nextImageIndex]
       
       // Log the image ID that is now being displayed
-      console.log('📸 Now displaying image ID:', currentImage?.id)
+      console.log('📸 Normal advance - Now displaying image ID:', currentImage?.id, 'at index:', nextImageIndex)
       
       // Mark round as completed if we just showed the last image
       const hasCompletedRound = state.hasCompletedRound || isOnLastImage
@@ -151,14 +173,16 @@ function slideshowReducer(state: SlideshowState, action: SlideshowAction): Slide
       }
     
     case 'REORDER_FOR_NEW_ROUND': {
-      if (state.orderingMode === 'insertion' || !state.hasCompletedRound) {
-        return state // No reordering needed
+      if (state.orderingMode === 'insertion') {
+        return state // No reordering needed for insertion mode
       }
       
       // Reorder to newest-first (descending by created_at)
       const reorderedUploads = [...state.stableUploads].sort((a, b) => 
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       )
+      
+      console.log('🔄 REORDER_FOR_NEW_ROUND: Resetting to position 0')
       
       return {
         ...state,
@@ -461,33 +485,7 @@ export default function LivewallPage() {
       }
       
       console.log('➡️ Advancing slideshow')
-      
-      // Check if we're about to complete a round (on the last image) and need reordering
-      const isOnLastImage = currentState.currentImageIndex === currentState.stableUploads.length - 1
-      const shouldReorderAfter = isOnLastImage && currentState.orderingMode === 'newest-first'
-      
       dispatch({ type: 'ADVANCE_SLIDESHOW' })
-      
-      // If we just completed a round, reorder for next round
-      if (shouldReorderAfter) {
-        // Clear the interval temporarily to prevent conflicts during reordering
-        if (slideshowIntervalRef.current) {
-          clearInterval(slideshowIntervalRef.current)
-          slideshowIntervalRef.current = null
-        }
-        
-        setTimeout(() => {
-          console.log('🔄 Reordering for new round')
-          dispatch({ type: 'REORDER_FOR_NEW_ROUND' })
-          
-          // Restart the slideshow interval after reordering
-          setTimeout(() => {
-            if (!slideshowIntervalRef.current) {
-              startSlideshowInterval()
-            }
-          }, 100) // Small delay to ensure state is updated
-        }, 1000) // Delay to allow current transition to complete
-      }
     }, displayDuration)
     
     slideshowIntervalRef.current = interval
@@ -524,6 +522,8 @@ export default function LivewallPage() {
     const currentImage = state.stableUploads[state.currentImageIndex]
     const nextImageIndex = (state.currentImageIndex + 1) % state.stableUploads.length
     const nextImage = state.stableUploads[nextImageIndex]
+    
+    console.log('🎰 Slot update - currentIndex:', state.currentImageIndex, 'currentImage:', currentImage?.id, 'showingSlotA:', state.showingSlotA)
     
     if (state.showingSlotA) {
       // Slot A is visible - it should show current image
