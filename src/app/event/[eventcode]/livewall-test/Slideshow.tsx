@@ -1,7 +1,9 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { useParams } from 'next/navigation'
 import { supabase, Database } from '@/lib/supabase'
+import QRCode from '@/components/QRCode'
 
 type Upload = Database['public']['Tables']['uploads']['Row']
 type Event = Database['public']['Tables']['events']['Row']
@@ -11,6 +13,8 @@ interface SlideshowProps {
 }
 
 export default function Slideshow({ event }: SlideshowProps) {
+  const params = useParams()
+  const eventCode = params.eventcode as string
   const [queue, setQueue] = useState<Upload[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
 
@@ -181,32 +185,45 @@ export default function Slideshow({ event }: SlideshowProps) {
 
   if (queue.length === 0) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-500">No images to display</p>
+      <div className={`min-h-screen bg-gradient-to-br ${event?.livewall_background_gradient || 'from-purple-900 via-blue-900 to-indigo-900'} flex items-center justify-center`}>
+        <p className="text-white text-xl">Warten auf die ersten Fotos...</p>
       </div>
     )
   }
 
   const currentImage = queue[currentIndex]
+  const uploadUrl = `${window.location.origin}/event/${eventCode}/upload`
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4">
-      <img
-        src={currentImage.file_url}
-        alt={currentImage.comment || 'Photo'}
-        className="max-w-full max-h-screen object-contain"
-      />
-
-      {(currentImage.uploader_name || currentImage.comment) && (
-        <div className="mt-4 text-center">
-          {currentImage.comment && (
-            <p className="text-lg mb-2">{currentImage.comment}</p>
-          )}
-          {currentImage.uploader_name && (
-            <p className="text-gray-600">- {currentImage.uploader_name}</p>
-          )}
+    <div className={`min-h-screen bg-gradient-to-br ${event?.livewall_background_gradient || 'from-purple-900 via-blue-900 to-indigo-900'} flex flex-col items-center justify-center p-4 relative overflow-hidden`}>
+      {/* Polaroid Style Container */}
+      <div className="bg-white p-6 pb-20 rounded-lg shadow-2xl rotate-1 transition-transform duration-300 max-w-6xl max-h-[90vh] mx-auto">
+        <div className="relative">
+          <img
+            src={currentImage.file_url}
+            alt={currentImage.comment || 'Photo'}
+            className="w-full h-auto max-h-[75vh] object-contain rounded-sm"
+            style={{ aspectRatio: 'auto' }}
+          />
         </div>
-      )}
+        
+        {/* Caption area at bottom of polaroid */}
+        <div className="mt-6 text-center">
+          {currentImage.comment && (
+            <p className="text-gray-800 text-xl leading-relaxed mb-2" style={{ fontFamily: 'var(--font-kalam), cursive' }}>
+              {currentImage.comment}
+            </p>
+          )}
+          <p className="text-gray-600 text-base" style={{ fontFamily: 'var(--font-kalam), cursive' }}>
+            - {currentImage.uploader_name || 'Anonym'}
+          </p>
+        </div>
+      </div>
+
+      {/* QR Code */}
+      <div className="absolute bottom-8 right-8 z-50">
+        <QRCode value={uploadUrl} size={120} />
+      </div>
     </div>
   )
 }
