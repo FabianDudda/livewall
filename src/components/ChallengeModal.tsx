@@ -28,12 +28,10 @@ export default function ChallengeModal({
   const [isLoading, setIsLoading] = useState(false)
   const [formData, setFormData] = useState({
     title: '',
-    description: '',
     hashtag: ''
   })
   const [errors, setErrors] = useState({
     title: '',
-    description: '',
     hashtag: ''
   })
 
@@ -44,13 +42,11 @@ export default function ChallengeModal({
     if (challenge) {
       setFormData({
         title: challenge.title,
-        description: challenge.description || '',
         hashtag: challenge.hashtag || challenge.title.toLowerCase().replace(/\s+/g, '')
       })
     } else {
       setFormData({
         title: '',
-        description: '',
         hashtag: ''
       })
     }
@@ -84,10 +80,9 @@ export default function ChallengeModal({
     
     setFormData({
       title: '',
-      description: '',
       hashtag: ''
     })
-    setErrors({ title: '', description: '', hashtag: '' })
+    setErrors({ title: '', hashtag: '' })
     onClose()
   }
 
@@ -123,11 +118,6 @@ export default function ChallengeModal({
       isValid = false
     }
 
-    if (!formData.description.trim()) {
-      newErrors.description = 'Beschreibung ist erforderlich'
-      isValid = false
-    }
-
     if (!formData.hashtag.trim()) {
       newErrors.hashtag = 'Hashtag ist erforderlich'
       isValid = false
@@ -150,7 +140,6 @@ export default function ChallengeModal({
     try {
       const challengeData = {
         title: formData.title.trim(),
-        description: formData.description.trim(),
         hashtag: formData.hashtag.trim().toLowerCase(),
         event_id: eventId
       }
@@ -244,25 +233,6 @@ export default function ChallengeModal({
             )}
           </div>
 
-          <div>
-            <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-2">
-              Beschreibung *
-            </label>
-            <textarea
-              id="description"
-              value={formData.description}
-              onChange={(e) => handleInputChange('description', e.target.value)}
-              placeholder="Beschreibung der Challenge..."
-              rows={3}
-              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                errors.description ? 'border-red-500' : 'border-gray-300'
-              }`}
-              disabled={isLoading}
-            />
-            {errors.description && (
-              <p className="mt-1 text-sm text-red-600">{errors.description}</p>
-            )}
-          </div>
 
           <div>
             <label htmlFor="hashtag" className="block text-sm font-medium text-gray-700 mb-2">

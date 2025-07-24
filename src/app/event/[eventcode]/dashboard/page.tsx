@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
-import { LogOut, ArrowLeft, Users, Image, Target, Copy, ExternalLink, QrCode, Plus, Grid, List, Check, X, Eye, Trash2, EyeOff, Download } from 'lucide-react'
+import { LogOut, ArrowLeft, Users, Image, Target, Copy, ExternalLink, QrCode, Plus, Grid, List, Check, X, Eye, Trash2, EyeOff, Download, Edit } from 'lucide-react'
 import SimpleImageGallery from '@/components/SimpleImageGallery'
 import { supabase } from '@/lib/supabase'
 import { Database } from '@/lib/supabase'
@@ -52,6 +52,9 @@ export default function EventDetail() {
   const [uploadHeaderGradient, setUploadHeaderGradient] = useState('from-gray-50 to-white')
   const [livewallBackgroundGradient, setLivewallBackgroundGradient] = useState('from-purple-900 via-blue-900 to-indigo-900')
   const [isDownloadingImages, setIsDownloadingImages] = useState(false)
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!loading && !user) {
@@ -634,6 +637,123 @@ export default function EventDetail() {
     }
   }
 
+  const handleDeleteEvent = async () => {
+    if (!event || !eventId) return
+
+    setIsDeleting(true)
+    setDeleteError(null)
+
+    try {
+      // Step 1: Delete storage files first (this doesn't depend on database)
+      const storageDeletePromises = []
+
+      // Delete all upload files from storage
+      for (const upload of uploads) {
+        try {
+          let filePath: string | null = null
+          try {
+            const url = new URL(upload.file_url)
+            const publicUrlPattern = /\/storage\/v1\/object\/public\/event-media\/(.+)$/
+            const pathMatch = url.pathname.match(publicUrlPattern)
+            
+            if (pathMatch) {
+              filePath = pathMatch[1].split('?')[0]
+            }
+          } catch (urlError) {
+            console.error('Error parsing file URL:', urlError)
+          }
+
+          if (filePath) {
+            storageDeletePromises.push(
+              supabase.storage
+                .from('event-media')
+                .remove([filePath])
+                .catch(error => console.error('Error deleting file:', error))
+            )
+          }
+        } catch (uploadError) {
+          console.error('Error processing upload file:', uploadError)
+        }
+      }
+
+      // Delete cover image from storage
+      if (event.cover_image_url) {
+        try {
+          // Try to extract actual file path from cover image URL
+          let coverFilePath = `${event.event_code}/cover.jpg`
+          try {
+            const url = new URL(event.cover_image_url)
+            const pathMatch = url.pathname.match(/\/storage\/v1\/object\/public\/event-media\/(.+)$/)
+            if (pathMatch) {
+              coverFilePath = pathMatch[1].split('?')[0]
+            }
+          } catch (urlError) {
+            console.error('Error parsing cover URL:', urlError)
+          }
+
+          storageDeletePromises.push(
+            supabase.storage
+              .from('event-media')
+              .remove([coverFilePath])
+              .catch(error => console.error('Error deleting cover:', error))
+          )
+        } catch (coverError) {
+          console.error('Error processing cover image:', coverError)
+        }
+      }
+
+      // Wait for all storage deletions (but don't fail if they error)
+      await Promise.allSettled(storageDeletePromises)
+
+      // Step 2: Delete database records in correct order (foreign key constraints)
+      
+      // Delete uploads first (they reference events)
+      const { error: uploadsError } = await supabase
+        .from('uploads')
+        .delete()
+        .eq('event_id', eventId)
+
+      if (uploadsError) {
+        console.error('Error deleting uploads:', uploadsError)
+        // Continue anyway - uploads might not exist
+      }
+
+      // Delete challenges (they reference events)  
+      const { error: challengesError } = await supabase
+        .from('challenges')
+        .delete()
+        .eq('event_id', eventId)
+
+      if (challengesError) {
+        console.error('Error deleting challenges:', challengesError)
+        // Continue anyway - challenges might not exist
+      }
+
+      // Step 3: Finally delete the event itself
+      const { error: eventError } = await supabase
+        .from('events')
+        .delete()
+        .eq('id', eventId)
+        .eq('user_id', user?.id)
+
+      if (eventError) {
+        console.error('Full event delete error:', eventError)
+        throw new Error(`Event konnte nicht gelöscht werden: ${eventError.message}. Möglicherweise fehlen Berechtigungen oder das Event existiert nicht mehr.`)
+      }
+
+      // Success - show message and redirect
+      alert('Event wurde erfolgreich gelöscht!')
+      router.push('/dashboard')
+
+    } catch (error) {
+      console.error('Error deleting event:', error)
+      setDeleteError(error instanceof Error ? error.message : 'Unbekannter Fehler beim Löschen des Events')
+    } finally {
+      setIsDeleting(false)
+      setShowDeleteConfirmation(false)
+    }
+  }
+
   if (loading || isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -1081,7 +1201,7 @@ export default function EventDetail() {
                         <div className="flex items-center justify-between">
                           <div className="flex-1">
                             <h4 className="font-semibold text-gray-900 mb-1">{challenge.title}</h4>
-                            <p className="text-gray-600 text-sm">{challenge.description}</p>
+                            <p className="text-sm text-gray-600">#{challenge.hashtag || challenge.title.toLowerCase().replace(/\s+/g, '')}</p>
                           </div>
                           <div className="flex items-center gap-2">
                             <button
@@ -1089,7 +1209,7 @@ export default function EventDetail() {
                               className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                               title="Challenge bearbeiten"
                             >
-                              <Eye className="w-4 h-4" />
+                              <Edit className="w-4 h-4" />
                             </button>
                             <button
                               onClick={() => handleDeleteChallenge(challenge.id)}
@@ -1349,7 +1469,31 @@ export default function EventDetail() {
                   </div>
                 </div>
 
-            
+                {/* Danger Zone - Delete Event */}
+                <div className="border-t pt-6">
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+                    <h4 className="text-lg font-semibold text-red-900 mb-2">Danger Zone</h4>
+                    <p className="text-sm text-red-700 mb-4">
+                      Das Löschen des Events kann nicht rückgängig gemacht werden. Alle Uploads, Challenges und Einstellungen gehen permanent verloren.
+                    </p>
+                    
+                    {deleteError && (
+                      <div className="bg-red-100 border border-red-300 rounded-lg p-3 mb-4">
+                        <div className="text-red-800 text-sm">{deleteError}</div>
+                      </div>
+                    )}
+                    
+                    <button
+                      type="button"
+                      onClick={() => setShowDeleteConfirmation(true)}
+                      disabled={isUpdating || isDeleting}
+                      className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Event permanent löschen
+                    </button>
+                  </div>
+                </div>
 
                 <div className="flex gap-3 pt-4">
                   <button
@@ -1387,6 +1531,69 @@ export default function EventDetail() {
         onChallengeCreated={handleChallengeCreated}
         onChallengeUpdated={handleChallengeUpdated}
       />
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirmation && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="bg-red-100 p-2 rounded-full">
+                  <Trash2 className="w-6 h-6 text-red-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Event löschen bestätigen
+                </h3>
+              </div>
+              
+              <div className="mb-6">
+                <p className="text-gray-700 mb-3">
+                  Sie sind dabei, das Event <strong>"{event?.name}"</strong> permanent zu löschen.
+                </p>
+                <p className="text-sm text-red-600 bg-red-50 p-3 rounded-lg border border-red-200">
+                  <strong>Warnung:</strong> Diese Aktion kann nicht rückgängig gemacht werden. Folgende Daten werden permanent gelöscht:
+                </p>
+                <ul className="text-sm text-gray-600 mt-2 ml-4 space-y-1">
+                  <li>• Das Event selbst</li>
+                  <li>• Alle {stats.totalUploads} Uploads und Bilder</li>
+                  <li>• Alle {stats.totalChallenges} Challenges</li>
+                  <li>• Alle Event-Einstellungen</li>
+                </ul>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowDeleteConfirmation(false)
+                    setDeleteError(null)
+                  }}
+                  disabled={isDeleting}
+                  className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50"
+                >
+                  Abbrechen
+                </button>
+                <button
+                  onClick={handleDeleteEvent}
+                  disabled={isDeleting}
+                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isDeleting ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                      Wird gelöscht...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-4 h-4" />
+                      Ja, permanent löschen
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

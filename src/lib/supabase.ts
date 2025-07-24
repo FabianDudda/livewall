@@ -108,7 +108,6 @@ export type Database = {
           id: string
           event_id: string
           title: string
-          description: string | null
           created_at: string
           hashtag: string | null
         }
@@ -116,7 +115,6 @@ export type Database = {
           id?: string
           event_id: string
           title: string
-          description?: string | null
           created_at?: string
           hashtag?: string | null
         }
@@ -124,7 +122,6 @@ export type Database = {
           id?: string
           event_id?: string
           title?: string
-          description?: string | null
           created_at?: string
           hashtag?: string | null
         }
