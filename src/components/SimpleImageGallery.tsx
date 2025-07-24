@@ -64,7 +64,7 @@ export default function SimpleImageGallery({
             className="relative aspect-square bg-gray-100 rounded-lg overflow-hidden group"
           >
             <img
-              src={image.url}
+              src={image.url || "https://csswouhdugmztnnglcdn.supabase.co/storage/v1/object/public/app//fallback.jpg"}
               alt={image.alt}
               className="w-full h-full object-cover cursor-pointer transition-opacity group-hover:opacity-50"
               loading="lazy"

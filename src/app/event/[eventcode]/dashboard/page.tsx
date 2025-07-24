@@ -1548,7 +1548,7 @@ export default function EventDetail() {
               
               <div className="mb-6">
                 <p className="text-gray-700 mb-3">
-                  Sie sind dabei, das Event <strong>"{event?.name}"</strong> permanent zu löschen.
+                  Sie sind dabei, das Event <strong>&rdquo;{event?.name}&rdquo;</strong> permanent zu löschen.
                 </p>
                 <p className="text-sm text-red-600 bg-red-50 p-3 rounded-lg border border-red-200">
                   <strong>Warnung:</strong> Diese Aktion kann nicht rückgängig gemacht werden. Folgende Daten werden permanent gelöscht:

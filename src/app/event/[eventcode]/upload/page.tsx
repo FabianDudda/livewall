@@ -557,7 +557,7 @@ export default function UploadPage() {
                 
                 return {
                   id: upload.id,
-                  url: upload.file_url,
+                  url: upload.file_url || "https://csswouhdugmztnnglcdn.supabase.co/storage/v1/object/public/app//fallback.jpg",
                   alt: upload.uploader_name || 'Upload',
                   title: upload.uploader_name || 'Anonymer Nutzer',
                   description: upload.comment || undefined,
