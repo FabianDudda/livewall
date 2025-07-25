@@ -24,10 +24,7 @@ export default function Slideshow({ event }: SlideshowProps) {
   const pendingUploadsRef = useRef<Upload[]>([])
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
 
-  // Fly-in state + Richtung
-  const [flyingUploads, setFlyingUploads] = useState<{ upload: Upload; fromLeft: boolean }[]>([])
-  const flyDirectionRef = useRef(true) // true = left, false = right
-
+  // Fetch approved uploads for this event
   const fetchUploads = async () => {
     const { data: uploads, error } = await supabase
       .from('uploads')
@@ -52,7 +49,7 @@ export default function Slideshow({ event }: SlideshowProps) {
     fetchUploads()
   }, [event.id])
 
-  // Realtime listeners
+  // Realtime: handle INSERT, UPDATE, DELETE events
   useEffect(() => {
     const channel = supabase
       .channel(`uploads-${event.id}`)
@@ -67,7 +64,11 @@ export default function Slideshow({ event }: SlideshowProps) {
         (payload) => {
           const newUpload = payload.new as Upload
           if (!newUpload.approved) return
-          pendingUploadsRef.current = [...pendingUploadsRef.current, newUpload]
+          // Add to pending buffer
+          pendingUploadsRef.current = [
+            ...pendingUploadsRef.current,
+            newUpload,
+          ]
         }
       )
       .on(
@@ -79,16 +80,22 @@ export default function Slideshow({ event }: SlideshowProps) {
           filter: `event_id=eq.${event.id}`,
         },
         (payload) => {
-          const updated = payload.new as Upload
-          if (!updated.approved) {
-            queueRef.current = queueRef.current.filter((u) => u.id !== updated.id)
-            setQueue(queueRef.current)
+          const updatedUpload = payload.new as Upload
+          if (!updatedUpload.approved) {
+            const updatedQueue = queueRef.current.filter(
+              (upload) => upload.id !== updatedUpload.id
+            )
+            queueRef.current = updatedQueue
+            setQueue(updatedQueue)
             return
           }
-          const idx = queueRef.current.findIndex((u) => u.id === updated.id)
+
+          const idx = queueRef.current.findIndex(
+            (upload) => upload.id === updatedUpload.id
+          )
           if (idx !== -1) {
             const updatedQueue = [...queueRef.current]
-            updatedQueue[idx] = updated
+            updatedQueue[idx] = updatedUpload
             queueRef.current = updatedQueue
             setQueue(updatedQueue)
           }
@@ -103,47 +110,43 @@ export default function Slideshow({ event }: SlideshowProps) {
           filter: `event_id=eq.${event.id}`,
         },
         (payload) => {
-          const deleted = payload.old as Upload
-          queueRef.current = queueRef.current.filter((u) => u.id !== deleted.id)
-          setQueue(queueRef.current)
-          if (currentIndexRef.current >= queueRef.current.length) {
-            currentIndexRef.current = Math.max(0, queueRef.current.length - 1)
+          const deletedUpload = payload.old as Upload
+          const updatedQueue = queueRef.current.filter(
+            (upload) => upload.id !== deletedUpload.id
+          )
+          queueRef.current = updatedQueue
+          setQueue(updatedQueue)
+
+          if (currentIndexRef.current >= updatedQueue.length) {
+            currentIndexRef.current = Math.max(0, updatedQueue.length - 1)
             setCurrentIndex(currentIndexRef.current)
           }
         }
       )
       .subscribe()
 
-    return () => {channel.unsubscribe()}
+    return () => {
+      channel.unsubscribe()
+    }
   }, [event.id])
 
-  // Slideshow Loop
+  // Slideshow loop
   useEffect(() => {
     if (queue.length === 0) return
 
-    const duration = (event.image_display_duration || 10) * 1000
+    const displayDuration = (event.image_display_duration || 10) * 1000
 
     intervalRef.current = setInterval(() => {
       let nextIndex = currentIndexRef.current + 1
 
-      // Insert new uploads from buffer
       if (pendingUploadsRef.current.length > 0) {
-        const sorted = [...pendingUploadsRef.current].sort(
+        const sortedPending = [...pendingUploadsRef.current].sort(
           (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
         )
 
-        // Fly in
-        const flying = sorted.map((upload) => {
-          const fromLeft = flyDirectionRef.current
-          flyDirectionRef.current = !flyDirectionRef.current
-          return { upload, fromLeft }
-        })
-
-        setFlyingUploads((prev) => [...prev, ...flying])
-
-        // Insert into queue
         const updatedQueue = [...queueRef.current]
-        updatedQueue.splice(currentIndexRef.current + 1, 0, ...sorted)
+        const insertAt = currentIndexRef.current + 1
+        updatedQueue.splice(insertAt, 0, ...sortedPending)
 
         queueRef.current = updatedQueue
         setQueue(updatedQueue)
@@ -159,21 +162,13 @@ export default function Slideshow({ event }: SlideshowProps) {
 
       currentIndexRef.current = nextIndex
       setCurrentIndex(nextIndex)
-    }, duration)
+    }, displayDuration)
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current)
     }
   }, [queue.length, event.image_display_duration])
 
-  // Fly-In-Bilder nach Zeit entfernen
-  useEffect(() => {
-    if (flyingUploads.length === 0) return
-    const timer = setTimeout(() => setFlyingUploads([]), 3500)
-    return () => clearTimeout(timer)
-  }, [flyingUploads])
-
-  // Keep refs synced
   useEffect(() => {
     queueRef.current = queue
   }, [queue])
@@ -185,7 +180,7 @@ export default function Slideshow({ event }: SlideshowProps) {
   if (queue.length === 0) {
     return (
       <div className={`min-h-screen bg-gradient-to-br ${event?.livewall_background_gradient || 'from-purple-900 via-blue-900 to-indigo-900'} flex items-center justify-center`}>
-        <p className="text-white text-xl">Warten auf die ersten Fotos…</p>
+        <p className="text-white text-xl">Warten auf die ersten Fotos...</p>
       </div>
     )
   }
@@ -195,71 +190,47 @@ export default function Slideshow({ event }: SlideshowProps) {
 
   return (
     <div className={`min-h-screen bg-gradient-to-br ${event?.livewall_background_gradient || 'from-purple-900 via-blue-900 to-indigo-900'} flex flex-col items-center justify-center p-4 relative overflow-hidden`}>
-      {/* Fly-in Animation */}
-      <AnimatePresence>
-  {flyingUploads.map(({ upload, fromLeft }) => (
-    <motion.img
-      key={`fly-${upload.id}`}
-      src={upload.file_url}
-      initial={{
-        y: window.innerHeight * 0.5, // Start: unterhalb des Bildschirms
-      }}
-      animate={{
-        y: -window.innerHeight, // Ziel: oberhalb des Bildschirms
-        transition: { duration: 3.5, ease: 'linear' }, // gleichmäßig, ohne Beschleunigung
-      }}
-      exit={{}} // kein Exit nötig
-      style={{
-        position: 'fixed',
-        bottom: 0,
-        width: 240,
-        zIndex: 9999,
-        borderRadius: 12,
-        boxShadow: '0 10px 20px rgba(0,0,0,0.3)',
-        pointerEvents: 'none',
-        userSelect: 'none',
-        left: fromLeft ? '20%' : '60%',
-        transform: 'translateX(-50%)',
-      }}
-    />
-  ))}
-</AnimatePresence>
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={currentImage.id}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.8 }}
+          className="bg-white p-6 pb-20 rounded-lg shadow-2xl rotate-1 transition-transform duration-300 max-w-6xl max-h-[90vh] mx-auto"
+        >
+          <div className="relative">
+            <img
+              src={currentImage.file_url}
+              alt={currentImage.comment || 'Photo'}
+              className="w-full h-auto max-h-[75vh] object-contain rounded-sm"
+              style={{ aspectRatio: 'auto' }}
+            />
+          </div>
 
-
-
-
-
-
-
-
-      {/* Hauptbild */}
-      <div className="bg-white p-6 pb-20 rounded-lg shadow-2xl rotate-1 transition-transform duration-300 max-w-6xl max-h-[90vh] mx-auto">
-        <div className="relative">
-          <img
-            src={currentImage.file_url || "https://csswouhdugmztnnglcdn.supabase.co/storage/v1/object/public/app//fallback.jpg"}
-            alt={currentImage.comment || 'Photo'}
-            className="w-full h-auto max-h-[75vh] object-contain rounded-sm"
-            style={{ aspectRatio: 'auto' }}
-          />
-        </div>
-
-        {/* Caption */}
-        <div className="mt-6 text-center">
-          {currentImage.comment && (
-            <p className="text-gray-800 text-xl leading-relaxed mb-2" style={{ fontFamily: 'var(--font-kalam), cursive' }}>
-              {currentImage.comment}
+          <div className="mt-6 text-center">
+            {currentImage.comment && (
+              <p className="text-gray-800 text-xl leading-relaxed mb-2" style={{ fontFamily: 'var(--font-kalam), cursive' }}>
+                {currentImage.comment}
+              </p>
+            )}
+            <p className="text-gray-600 text-base" style={{ fontFamily: 'var(--font-kalam), cursive' }}>
+              - {currentImage.uploader_name || 'Anonym'}
             </p>
-          )}
-          <p className="text-gray-600 text-base" style={{ fontFamily: 'var(--font-kalam), cursive' }}>
-            - {currentImage.uploader_name || 'Anonym'}
-          </p>
-        </div>
-      </div>
+          </div>
+        </motion.div>
+      </AnimatePresence>
 
-      {/* QR Code */}
-      <div className="absolute bottom-8 right-8 z-50">
+      <motion.div
+        key={currentImage.id + '-qr'}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.8 }}
+        className="absolute bottom-8 right-8 z-50"
+      >
         <QRCode value={uploadUrl} size={120} />
-      </div>
+      </motion.div>
     </div>
   )
 }
