@@ -1,0 +1,11 @@
+# Änderungen zur Staging-Area hinzufügen:
+git add .
+
+# oder nur eine bestimmte Datei:
+git add dateiname.txt
+
+# Commit erstellen:
+git commit -m "Kurze, prägnante Commit-Nachricht"
+
+# Änderungen zum entfernten Repository (z. B. GitHub) pushen:
+git push

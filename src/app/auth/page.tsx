@@ -3,9 +3,12 @@
 import { useState } from 'react'
 import SignInForm from '@/components/auth/SignInForm'
 import SignUpForm from '@/components/auth/SignUpForm'
+import ForgotPasswordForm from '@/components/auth/ForgotPasswordForm'
+
+type AuthMode = 'signIn' | 'signUp' | 'forgotPassword'
 
 export default function AuthPage() {
-  const [isSignUp, setIsSignUp] = useState(false)
+  const [authMode, setAuthMode] = useState<AuthMode>('signIn')
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
@@ -16,10 +19,15 @@ export default function AuthPage() {
         </div>
         
         <div className="bg-white py-8 px-4 shadow-lg sm:rounded-lg sm:px-10">
-          {isSignUp ? (
-            <SignUpForm onToggleMode={() => setIsSignUp(false)} />
+          {authMode === 'signUp' ? (
+            <SignUpForm onToggleMode={() => setAuthMode('signIn')} />
+          ) : authMode === 'forgotPassword' ? (
+            <ForgotPasswordForm onBack={() => setAuthMode('signIn')} />
           ) : (
-            <SignInForm onToggleMode={() => setIsSignUp(true)} />
+            <SignInForm 
+              onToggleMode={() => setAuthMode('signUp')} 
+              onForgotPassword={() => setAuthMode('forgotPassword')}
+            />
           )}
         </div>
       </div>

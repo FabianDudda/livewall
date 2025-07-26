@@ -7,9 +7,10 @@ import { Mail, Lock, Eye, EyeOff } from 'lucide-react'
 
 interface SignInFormProps {
   onToggleMode: () => void
+  onForgotPassword: () => void
 }
 
-export default function SignInForm({ onToggleMode }: SignInFormProps) {
+export default function SignInForm({ onToggleMode, onForgotPassword }: SignInFormProps) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -52,6 +53,8 @@ export default function SignInForm({ onToggleMode }: SignInFormProps) {
     
     setLoading(false)
   }
+
+  
 
   return (
     <div className="w-full max-w-md">
@@ -108,6 +111,16 @@ export default function SignInForm({ onToggleMode }: SignInFormProps) {
               {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
             </button>
           </div>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={onForgotPassword}
+            className="text-sm text-blue-600 hover:text-blue-500 font-medium"
+          >
+            Passwort vergessen?
+          </button>
         </div>
 
         <button

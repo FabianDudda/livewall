@@ -8,10 +8,13 @@ interface AuthContextType {
   user: User | null
   session: Session | null
   loading: boolean
+  isPasswordRecovery: boolean
   signUp: (email: string, password: string) => Promise<{ error: AuthError | null }>
   signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>
   signInWithGoogle: () => Promise<{ error: AuthError | null }>
   signOut: () => Promise<{ error: AuthError | null }>
+  resetPassword: (email: string) => Promise<{ error: AuthError | null }>
+  updatePassword: (password: string) => Promise<{ error: AuthError | null }>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -20,6 +23,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(false)
 
   useEffect(() => {
     // Get initial session
@@ -38,11 +42,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setSession(session)
         setUser(session?.user ?? null)
         setLoading(false)
+        
+        // Handle password recovery flow
+        if (event === 'PASSWORD_RECOVERY') {
+          setIsPasswordRecovery(true)
+        } else if (event === 'SIGNED_IN' && isPasswordRecovery) {
+          // Reset password recovery state after successful password update
+          setIsPasswordRecovery(false)
+        }
       }
     )
 
     return () => subscription.unsubscribe()
-  }, [])
+  }, [isPasswordRecovery])
 
   const signUp = async (email: string, password: string) => {
     const { error } = await supabase.auth.signUp({
@@ -78,14 +90,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { error }
   }
 
+  const resetPassword = async (email: string) => {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/auth/reset-password`
+    })
+    return { error }
+  }
+
+  const updatePassword = async (password: string) => {
+    const { error } = await supabase.auth.updateUser({
+      password: password
+    })
+    return { error }
+  }
+
   const value = {
     user,
     session,
     loading,
+    isPasswordRecovery,
     signUp,
     signIn,
     signInWithGoogle,
-    signOut
+    signOut,
+    resetPassword,
+    updatePassword
   }
 
   return (
