@@ -1,0 +1,66 @@
+In event/[eventcode]/dashboard/page.tsx under the settings tab:
+
+- Create a button to delete the event with all its data from the ui and the database
+- Ask the user to confirm the deletion
+- Also delete all uploads and challenges for this event from the ui and the database
+- Show a success message after deletion
+- After deletion, redirect to the dashboard/page.tsx
+
+
+---
+
+
+You are a senior React/Next.js developer. You need to implement a delete event feature in the settings tab of an event dashboard page.
+
+**Context:**
+- File location: `event/[eventcode]/dashboard/page.tsx`
+- The page has a settings tab where the delete functionality should be added
+
+**Requirements:**
+1. Create a delete button in the settings tab with appropriate styling and warning indicators (red color, trash icon, etc.)
+2. Implement a confirmation dialog/modal that clearly warns the user about the permanent nature of this action
+3. The deletion should remove:
+  - The event itself from the database
+  - All associated uploads for this event from the database
+  - All associated challenges for this event from the database
+  - Update the UI state accordingly
+4. Show a success toast/notification after successful deletion
+5. Redirect the user to `/dashboard` after successful deletion
+6. Include proper error handling with user-friendly error messages
+7. Add loading states during the deletion process to prevent multiple clicks
+
+-----
+
+
+You are a senior React/Next.js developer. You need to implement a comprehensive "Forgot Password" feature using Supabase authentication. This should be a complete, production-ready component that handles the entire password reset flow.
+
+## Core Requirements:
+1. **Reset Request Form**: A clean, user-friendly form with:
+  - Email input field with proper validation
+  - "Reset Password" button
+  - Loading states during API calls
+  - Clear error handling and user feedback
+
+2. **Email Reset Logic**: 
+  - Use `supabase.auth.resetPasswordForEmail(email)` to send reset links
+  - Handle various error scenarios (invalid email, email not found, network issues)
+  - Display appropriate error messages to users
+  - Show success confirmation when reset email is sent
+
+3. **Password Recovery Handler**:
+  - Implement `onAuthStateChange` listener for the `PASSWORD_RECOVERY` event
+  - Detect when users return from clicking the reset link
+  - Present a secure form for entering the new password
+  - Use `supabase.auth.updateUser()` to update the password
+  - Include password confirmation and validation
+
+## Technical Specifications:
+- Use React hooks (useState, useEffect) for state management
+- Implement proper form validation and user experience patterns
+- Include loading states, error boundaries, and success feedback
+- Make the component responsive and accessible
+- Handle edge cases and provide clear user guidance throughout the flow
+
+## Additional Considerations:
+- Include proper TypeScript types
+- Add comments explaining the authentication flow
