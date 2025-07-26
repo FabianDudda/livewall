@@ -7,5 +7,5 @@ git add dateiname.txt
 # Commit erstellen:
 git commit -m "Kurze, prägnante Commit-Nachricht"
 
-# Änderungen zum entfernten Repository (z. B. GitHub) pushen:
+# Änderungen pushen:
 git push

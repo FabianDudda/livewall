@@ -28,7 +28,6 @@ export type Database = {
           updated_at: string
           user_id: string
           image_display_duration: number | null
-          auto_refresh_interval: number | null
           upload_header_gradient: string | null
           livewall_background_gradient: string | null
           ordering_mode: string | null
@@ -45,7 +44,6 @@ export type Database = {
           updated_at?: string
           user_id: string
           image_display_duration?: number | null
-          auto_refresh_interval?: number | null
           upload_header_gradient?: string | null
           livewall_background_gradient?: string | null  
           ordering_mode?: string | null
@@ -62,7 +60,6 @@ export type Database = {
           updated_at?: string
           user_id?: string
           image_display_duration?: number | null
-          auto_refresh_interval?: number | null
           upload_header_gradient?: string | null
           livewall_background_gradient?: string | null
           ordering_mode?: string | null
