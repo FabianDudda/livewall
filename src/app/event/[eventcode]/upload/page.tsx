@@ -419,6 +419,20 @@ export default function UploadPage() {
                 />
               </label>
          
+              <label className="bg-gray-800 hover:bg-gray-900 text-white px-6 py-3 rounded-lg font-medium cursor-pointer inline-flex items-center justify-center gap-2 transition-colors shadow-sm">
+                  <Camera className="w-5 h-5" />
+                  Foto aufnehmen oder auswählen
+                  <input
+                    type="file"
+                    accept="image/*,video/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) handleFileSelect(file)
+                    }}
+                    className="hidden"
+                  />
+                </label>
+
               <button
                 onClick={() => setState(prev => ({ ...prev, showMessageModal: true }))}
                 className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center justify-center gap-2 transition-colors shadow-sm"
@@ -531,6 +545,8 @@ export default function UploadPage() {
                 >
                   Abbrechen
                 </button>
+
+            
               </div>
             </div>
           </div>
