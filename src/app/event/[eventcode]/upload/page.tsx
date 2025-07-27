@@ -153,20 +153,12 @@ export default function UploadPage() {
   }
 
   const handleSmartUploadClick = () => {
-    const isAndroid = /Android/i.test(navigator.userAgent)
-  
-    // if (isAndroid) {
-      // Custom Auswahl-Dialog z. B. via window.confirm (für MVP) oder eigenes Modal
       const useCamera = window.confirm("Möchtest du die Kamera verwenden? (Abbrechen = Galerie)")
       if (useCamera) {
         handleCameraCapture()
       } else {
-        handleUpload()
+        handleGallerySelect()
       }
-    // } else {
-    //   // iOS & Desktop → direkt normal öffnen
-    //   openFileInput({ capture: false })
-    // }
   }
 
   // const openFileInput = ({ capture }: { capture: boolean }) => {
@@ -202,6 +194,27 @@ export default function UploadPage() {
       setState(prev => ({ ...prev, error: 'Kamera-Zugriff nicht möglich' }))
     }
   }
+
+  const handleGallerySelect = () => {
+    try {
+      const input = document.createElement('input')
+      input.type = 'file'
+      input.accept = 'image/*,video/*'
+      input.onchange = (e) => {
+        const file = (e.target as HTMLInputElement).files?.[0]
+        if (file) {
+          handleFileSelect(file)
+        }
+      }
+      input.click()
+    } catch (error) {
+      console.error('Galeriezugriff fehlgeschlagen:', error)
+      setState(prev => ({ ...prev, error: 'Zugriff auf Galerie nicht möglich' }))
+    }
+  }
+  
+
+
 
   const handleUpload = async () => {
     if (!state.selectedFile || !state.event) return
