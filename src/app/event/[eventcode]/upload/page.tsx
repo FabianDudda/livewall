@@ -62,7 +62,7 @@ export default function UploadPage() {
     challengeId: ''
   })
 
-  const [showPicker, setShowPicker] = useState(false)
+  const isAndroid = /Android/i.test(navigator.userAgent)
 
   useEffect(() => {
     if (eventCode) {
@@ -151,6 +151,35 @@ export default function UploadPage() {
       error: null
     }))
   }
+  const handleSmartUploadClick = () => {
+    const isAndroid = /Android/i.test(navigator.userAgent)
+  
+    if (isAndroid) {
+      // Custom Auswahl-Dialog z. B. via window.confirm (für MVP) oder eigenes Modal
+      const useCamera = window.confirm("Möchtest du die Kamera verwenden? (Abbrechen = Galerie)")
+      if (useCamera) {
+        openFileInput({ capture: true })
+      } else {
+        openFileInput({ capture: false })
+      }
+    } else {
+      // iOS & Desktop → direkt normal öffnen
+      openFileInput({ capture: false })
+    }
+  }
+
+  const openFileInput = ({ capture }: { capture: boolean }) => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/*,video/*'
+    if (capture) input.setAttribute('capture', 'environment')
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0]
+      if (file) handleFileSelect(file)
+    }
+    input.click()
+  }
+  
 
   const handleCameraCapture = async () => {
     try {
@@ -352,24 +381,6 @@ export default function UploadPage() {
 
 
 
-  const handleFilePick = (mode: 'camera' | 'gallery') => {
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.accept = 'image/*,video/*'
-  
-    if (mode === 'camera') {
-      input.setAttribute('capture', 'environment') // Rückkamera
-    }
-  
-    input.onchange = (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0]
-      if (file) handleFileSelect(file)
-    }
-  
-    input.click()
-  }
-  
-
   return (
     <div className="min-h-screen bg-white">
       {/* Minimalistic Header */}
@@ -455,50 +466,14 @@ export default function UploadPage() {
                   />
                 </label>
 
-                const [showPicker, setShowPicker] = useState(false)
 
-<button
-  onClick={() => setShowPicker(true)}
+                <button
+  onClick={handleSmartUploadClick}
   className="bg-gray-800 hover:bg-gray-900 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center justify-center gap-2 transition-colors shadow-sm"
 >
   <Camera className="w-5 h-5" />
   Foto aufnehmen oder auswählen
 </button>
-
-{showPicker && (
-  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-    <div className="bg-white rounded-xl shadow-lg p-6 w-80 text-center space-y-4">
-      <h2 className="text-lg font-semibold text-gray-900">Was möchtest du tun?</h2>
-
-      <button
-        onClick={() => {
-          handleFilePick('camera')
-          setShowPicker(false)
-        }}
-        className="w-full bg-gray-800 text-white py-3 rounded-lg hover:bg-gray-900 transition-colors"
-      >
-        📷 Kamera öffnen
-      </button>
-
-      <button
-        onClick={() => {
-          handleFilePick('gallery')
-          setShowPicker(false)
-        }}
-        className="w-full bg-gray-700 text-white py-3 rounded-lg hover:bg-gray-800 transition-colors"
-      >
-        🖼️ Aus Galerie wählen
-      </button>
-
-      <button
-        onClick={() => setShowPicker(false)}
-        className="text-sm text-gray-500 hover:text-gray-700 mt-2"
-      >
-        Abbrechen
-      </button>
-    </div>
-  </div>
-)}
 
 
 
