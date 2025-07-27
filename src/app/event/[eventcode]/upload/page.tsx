@@ -177,7 +177,7 @@ export default function UploadPage() {
       const input = document.createElement('input')
       input.type = 'file'
       // input.accept = 'image/*'
-      input.capture = 'camera' // This forces camera to open directly on mobile
+      // input.capture = 'camera' // This forces camera to open directly on mobile
       input.setAttribute('capture', 'camera') // Additional attribute for better support
       input.onchange = (e) => {
         const file = (e.target as HTMLInputElement).files?.[0]
