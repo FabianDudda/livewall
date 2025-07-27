@@ -132,6 +132,15 @@ export default function UploadPage() {
     }
   }
 
+  const loadUploads = async () => {
+    const { data, error } = await supabase
+      .from('uploads')
+      .select('*')
+      .eq('event_id', eventId)
+      .order('created_at', { ascending: false })
+    if (!error) setState(prev => ({ ...prev, uploads: data || [] }))
+  }
+
   const handleFileSelect = (file: File) => {
     if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
       setState(prev => ({ ...prev, error: 'Nur Bilder und Videos sind erlaubt' }))
@@ -161,50 +170,60 @@ export default function UploadPage() {
       handleGallerySelect()
     }
   }
-  
-   
 
-  const handleCameraCapture = async () => {
-    try {
-      // Create file input that specifically opens camera
-      const input = document.createElement('input')
-      input.type = 'file'
-      input.accept = 'image/*'
-      input.capture = 'camera' // This forces camera to open directly on mobile
-      input.setAttribute('capture', 'camera') // Additional attribute for better support
-      input.onchange = (e) => {
-        const file = (e.target as HTMLInputElement).files?.[0]
-        if (file) {
-          handleFileSelect(file)
-        }
-      }
-      input.click()
-    } catch (error) {
-      console.error('Camera access error:', error)
-      setState(prev => ({ ...prev, error: 'Kamera-Zugriff nicht möglich' }))
+  const triggerFileInput = (accept: string, capture?: string) => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = accept
+    if (capture) input.setAttribute('capture', capture)
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0]
+      if (file) handleFileSelect(file)
     }
-  }
-
-  const handleGallerySelect = () => {
-    try {
-      const input = document.createElement('input')
-      input.type = 'file'
-      input.accept = 'image/*,video/*'
-      input.onchange = (e) => {
-        const file = (e.target as HTMLInputElement).files?.[0]
-        if (file) {
-          handleFileSelect(file)
-        }
-      }
-      input.click()
-    } catch (error) {
-      console.error('Galeriezugriff fehlgeschlagen:', error)
-      setState(prev => ({ ...prev, error: 'Zugriff auf Galerie nicht möglich' }))
-    }
+    input.click()
   }
   
+  const handleCameraCapture = () => triggerFileInput('image/*,video/*', 'camera')
+  const handleGallerySelect = () => triggerFileInput('image/*,video/*')
+  
+  // const handleCameraCapture = async () => {
+  //   try {
+  //     // Create file input that specifically opens camera
+  //     const input = document.createElement('input')
+  //     input.type = 'file'
+  //     input.accept = 'image/*'
+  //     input.capture = 'camera' // This forces camera to open directly on mobile
+  //     input.setAttribute('capture', 'camera') // Additional attribute for better support
+  //     input.onchange = (e) => {
+  //       const file = (e.target as HTMLInputElement).files?.[0]
+  //       if (file) {
+  //         handleFileSelect(file)
+  //       }
+  //     }
+  //     input.click()
+  //   } catch (error) {
+  //     console.error('Camera access error:', error)
+  //     setState(prev => ({ ...prev, error: 'Kamera-Zugriff nicht möglich' }))
+  //   }
+  // }
 
-
+  // const handleGallerySelect = () => {
+  //   try {
+  //     const input = document.createElement('input')
+  //     input.type = 'file'
+  //     input.accept = 'image/*,video/*'
+  //     input.onchange = (e) => {
+  //       const file = (e.target as HTMLInputElement).files?.[0]
+  //       if (file) {
+  //         handleFileSelect(file)
+  //       }
+  //     }
+  //     input.click()
+  //   } catch (error) {
+  //     console.error('Galeriezugriff fehlgeschlagen:', error)
+  //     setState(prev => ({ ...prev, error: 'Zugriff auf Galerie nicht möglich' }))
+  //   }
+  // }
 
   const handleUpload = async () => {
     if (!state.selectedFile || !state.event) return
@@ -236,7 +255,7 @@ export default function UploadPage() {
         }))
         
         setFormData({ name: '', comment: '', challengeId: '' })
-        await loadEventData() // Refresh uploads
+        await loadUploads() // Refresh uploads
         
         // Clear success message after 3 seconds
         setTimeout(() => {
@@ -548,47 +567,60 @@ export default function UploadPage() {
                 >
                   Abbrechen
                 </button>
-
-            
               </div>
+
+              {state.isUploading && state.uploadProgress > 0 && (
+                <>
+                  <div className="mt-2 text-sm text-gray-600 text-center">
+                    {state.uploadProgress}%
+                  </div>
+                  <div className="mt-1 w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
+                    <div
+                      className="bg-blue-600 h-full transition-all duration-200"
+                      style={{ width: `${state.uploadProgress}%` }}
+                    ></div>
+                  </div>
+                </>
+              )}
+
             </div>
           </div>
         )}
 
-  {/* Adnroid Abfrage */}
-{showUploadModal && (
-  <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center">
-    <div className="bg-white rounded-xl p-6 shadow-lg max-w-sm w-full text-center space-y-4">
-      <h2 className="text-lg font-semibold">Was möchtest du tun?</h2>
-      <div className="flex flex-col space-y-3">
-        <button
-          onClick={() => {
-            setShowUploadModal(false)
-            handleCameraCapture()
-          }}
-          className="bg-gray-800 hover:bg-gray-900 text-white px-4 py-2 rounded-lg font-medium flex items-center justify-center gap-2"
-        >
-          📸 Kamera verwenden
-        </button>
-        <button
-          onClick={() => {
-            setShowUploadModal(false)
-            handleGallerySelect()
-          }}
-          className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg font-medium flex items-center justify-center gap-2"
-        >
-          🖼️ Galerie auswählen
-        </button>
-      </div>
-      <button
-        onClick={() => setShowUploadModal(false)}
-        className="text-sm text-gray-500 hover:underline mt-2"
-      >
-        Abbrechen
-      </button>
-    </div>
-  </div>
-)}
+        {/* Adnroid Kamera/Galerie Abfrage */}
+        {showUploadModal && (
+          <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center">
+            <div className="bg-white rounded-xl p-6 shadow-lg max-w-sm w-full text-center space-y-4">
+              <h2 className="text-lg font-semibold">Was möchtest du tun?</h2>
+              <div className="flex flex-col space-y-3">
+                <button
+                  onClick={() => {
+                    setShowUploadModal(false)
+                    handleCameraCapture()
+                  }}
+                  className="bg-gray-800 hover:bg-gray-900 text-white px-4 py-2 rounded-lg font-medium flex items-center justify-center gap-2"
+                >
+                  📸 Kamera verwenden
+                </button>
+                <button
+                  onClick={() => {
+                    setShowUploadModal(false)
+                    handleGallerySelect()
+                  }}
+                  className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg font-medium flex items-center justify-center gap-2"
+                >
+                  🖼️ Galerie auswählen
+                </button>
+              </div>
+              <button
+                onClick={() => setShowUploadModal(false)}
+                className="text-sm text-gray-500 hover:underline mt-2"
+              >
+                Abbrechen
+              </button>
+            </div>
+          </div>
+        )}
 
 
         {/* Uploads Grid */}
