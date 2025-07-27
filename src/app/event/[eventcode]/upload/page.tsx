@@ -153,13 +153,21 @@ export default function UploadPage() {
   }
 
   const handleSmartUploadClick = () => {
+    const isAndroid = /Android/i.test(navigator.userAgent)
+  
+    if (isAndroid) {
       const useCamera = window.confirm("Möchtest du die Kamera verwenden? (Abbrechen = Galerie)")
       if (useCamera) {
         handleCameraCapture()
       } else {
         handleGallerySelect()
       }
+    } else {
+      // iOS oder Desktop → normal öffnen
+      handleGallerySelect()
+    }
   }
+  
 
   // const openFileInput = ({ capture }: { capture: boolean }) => {
   //   const input = document.createElement('input')
