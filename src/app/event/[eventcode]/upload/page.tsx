@@ -62,6 +62,8 @@ export default function UploadPage() {
     challengeId: ''
   })
 
+  const [showPicker, setShowPicker] = useState(false)
+
   useEffect(() => {
     if (eventCode) {
       loadEventData()
@@ -348,7 +350,7 @@ export default function UploadPage() {
     )
   }
 
-  const [showPicker, setShowPicker] = useState(false)
+
 
   const handleFilePick = (mode: 'camera' | 'gallery') => {
     const input = document.createElement('input')
