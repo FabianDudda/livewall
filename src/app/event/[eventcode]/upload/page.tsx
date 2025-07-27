@@ -151,34 +151,35 @@ export default function UploadPage() {
       error: null
     }))
   }
+
   const handleSmartUploadClick = () => {
     const isAndroid = /Android/i.test(navigator.userAgent)
   
-    if (isAndroid) {
+    // if (isAndroid) {
       // Custom Auswahl-Dialog z. B. via window.confirm (für MVP) oder eigenes Modal
       const useCamera = window.confirm("Möchtest du die Kamera verwenden? (Abbrechen = Galerie)")
       if (useCamera) {
-        openFileInput({ capture: true })
+        handleCameraCapture()
       } else {
-        openFileInput({ capture: false })
+        handleUpload()
       }
-    } else {
-      // iOS & Desktop → direkt normal öffnen
-      openFileInput({ capture: false })
-    }
+    // } else {
+    //   // iOS & Desktop → direkt normal öffnen
+    //   openFileInput({ capture: false })
+    // }
   }
 
-  const openFileInput = ({ capture }: { capture: boolean }) => {
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.accept = 'image/*,video/*'
-    if (capture) input.setAttribute('capture', 'environment')
-    input.onchange = (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0]
-      if (file) handleFileSelect(file)
-    }
-    input.click()
-  }
+  // const openFileInput = ({ capture }: { capture: boolean }) => {
+  //   const input = document.createElement('input')
+  //   input.type = 'file'
+  //   input.accept = 'image/*,video/*'
+  //   if (capture) input.setAttribute('capture', 'environment')
+  //   input.onchange = (e) => {
+  //     const file = (e.target as HTMLInputElement).files?.[0]
+  //     if (file) handleFileSelect(file)
+  //   }
+  //   input.click()
+  // }
   
 
   const handleCameraCapture = async () => {
