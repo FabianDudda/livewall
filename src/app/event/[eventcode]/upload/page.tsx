@@ -62,7 +62,8 @@ export default function UploadPage() {
     challengeId: ''
   })
 
-  const isAndroid = /Android/i.test(navigator.userAgent)
+  const [showUploadModal, setShowUploadModal] = useState(false)
+
 
   useEffect(() => {
     if (eventCode) {
@@ -154,33 +155,14 @@ export default function UploadPage() {
 
   const handleSmartUploadClick = () => {
     const isAndroid = /Android/i.test(navigator.userAgent)
-  
     if (isAndroid) {
-      const useCamera = window.confirm("Möchtest du die Kamera verwenden? (Abbrechen = Galerie)")
-      if (useCamera) {
-        handleCameraCapture()
-      } else {
-        handleGallerySelect()
-      }
+      setShowUploadModal(true)
     } else {
-      // iOS oder Desktop → normal öffnen
       handleGallerySelect()
     }
   }
   
-
-  // const openFileInput = ({ capture }: { capture: boolean }) => {
-  //   const input = document.createElement('input')
-  //   input.type = 'file'
-  //   input.accept = 'image/*,video/*'
-  //   if (capture) input.setAttribute('capture', 'environment')
-  //   input.onchange = (e) => {
-  //     const file = (e.target as HTMLInputElement).files?.[0]
-  //     if (file) handleFileSelect(file)
-  //   }
-  //   input.click()
-  // }
-  
+   
 
   const handleCameraCapture = async () => {
     try {
@@ -451,61 +433,16 @@ export default function UploadPage() {
         
         {!state.showUploadForm ? (
           <div className="text-center mb-12">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Foto oder Nachricht senden</h2>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <button
-                onClick={handleCameraCapture}
-                className="bg-gray-800 hover:bg-gray-900 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center justify-center gap-2 transition-colors shadow-sm"
-              >
-                <Camera className="w-5 h-5" />
-                Kamera öffnen
-              </button>
-              <label className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-3 rounded-lg font-medium cursor-pointer inline-flex items-center justify-center gap-2 transition-opacity shadow-sm border border-gray-200">
-                <ImageIcon className="w-5 h-5" />
-                Aus Galerie wählen
-                <input
-                  type="file"
-                  accept="image/*,video/*"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (file) handleFileSelect(file)
-                  }}
-                  className="hidden"
-                />
-              </label>
-         
-              <label className="bg-gray-800 hover:bg-gray-900 text-white px-6 py-3 rounded-lg font-medium cursor-pointer inline-flex items-center justify-center gap-2 transition-colors shadow-sm">
-                  <Camera className="w-5 h-5" />
-                  Foto aufnehmen oder auswählen
-                  <input
-                    type="file"
-                    accept="image/*,video/*"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0]
-                      if (file) handleFileSelect(file)
-                    }}
-                    className="hidden"
-                  />
-                </label>
-
-
-                <button
-  onClick={handleSmartUploadClick}
-  className="bg-gray-800 hover:bg-gray-900 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center justify-center gap-2 transition-colors shadow-sm"
->
-  <Camera className="w-5 h-5" />
-  Foto aufnehmen oder auswählen
-</button>
-
-
 
               <button
-                onClick={() => setState(prev => ({ ...prev, showMessageModal: true }))}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center justify-center gap-2 transition-colors shadow-sm"
-              >
-                <MessageSquare className="w-5 h-5" />
-                Nachricht senden
+                onClick={handleSmartUploadClick}
+                className="bg-gray-800 hover:bg-gray-900 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center justify-center gap-2 transition-colors shadow-sm"
+                >
+                <Camera className="w-5 h-5" />
+                Foto aufnehmen oder auswählen
               </button>
+
             </div>
           </div>
         ) : (
@@ -617,6 +554,42 @@ export default function UploadPage() {
             </div>
           </div>
         )}
+
+  {/* Adnroid Abfrage */}
+{showUploadModal && (
+  <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center">
+    <div className="bg-white rounded-xl p-6 shadow-lg max-w-sm w-full text-center space-y-4">
+      <h2 className="text-lg font-semibold">Was möchtest du tun?</h2>
+      <div className="flex flex-col space-y-3">
+        <button
+          onClick={() => {
+            setShowUploadModal(false)
+            handleCameraCapture()
+          }}
+          className="bg-gray-800 hover:bg-gray-900 text-white px-4 py-2 rounded-lg font-medium flex items-center justify-center gap-2"
+        >
+          📸 Kamera verwenden
+        </button>
+        <button
+          onClick={() => {
+            setShowUploadModal(false)
+            handleGallerySelect()
+          }}
+          className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg font-medium flex items-center justify-center gap-2"
+        >
+          🖼️ Galerie auswählen
+        </button>
+      </div>
+      <button
+        onClick={() => setShowUploadModal(false)}
+        className="text-sm text-gray-500 hover:underline mt-2"
+      >
+        Abbrechen
+      </button>
+    </div>
+  </div>
+)}
+
 
         {/* Uploads Grid */}
         <div>
