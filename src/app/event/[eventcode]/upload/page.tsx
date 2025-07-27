@@ -170,60 +170,45 @@ export default function UploadPage() {
       handleGallerySelect()
     }
   }
-
-  const triggerFileInput = (accept: string, capture?: string) => {
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.accept = accept
-    if (capture) input.setAttribute('capture', capture)
-    input.onchange = (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0]
-      if (file) handleFileSelect(file)
+  
+  const handleCameraCapture = async () => {
+    try {
+      // Create file input that specifically opens camera
+      const input = document.createElement('input')
+      input.type = 'file'
+      input.accept = 'image/*'
+      input.capture = 'camera' // This forces camera to open directly on mobile
+      input.setAttribute('capture', 'camera') // Additional attribute for better support
+      input.onchange = (e) => {
+        const file = (e.target as HTMLInputElement).files?.[0]
+        if (file) {
+          handleFileSelect(file)
+        }
+      }
+      input.click()
+    } catch (error) {
+      console.error('Camera access error:', error)
+      setState(prev => ({ ...prev, error: 'Kamera-Zugriff nicht möglich' }))
     }
-    input.click()
   }
-  
-  const handleCameraCapture = () => triggerFileInput('image/*,video/*', 'camera')
-  const handleGallerySelect = () => triggerFileInput('image/*,video/*')
-  
-  // const handleCameraCapture = async () => {
-  //   try {
-  //     // Create file input that specifically opens camera
-  //     const input = document.createElement('input')
-  //     input.type = 'file'
-  //     input.accept = 'image/*'
-  //     input.capture = 'camera' // This forces camera to open directly on mobile
-  //     input.setAttribute('capture', 'camera') // Additional attribute for better support
-  //     input.onchange = (e) => {
-  //       const file = (e.target as HTMLInputElement).files?.[0]
-  //       if (file) {
-  //         handleFileSelect(file)
-  //       }
-  //     }
-  //     input.click()
-  //   } catch (error) {
-  //     console.error('Camera access error:', error)
-  //     setState(prev => ({ ...prev, error: 'Kamera-Zugriff nicht möglich' }))
-  //   }
-  // }
 
-  // const handleGallerySelect = () => {
-  //   try {
-  //     const input = document.createElement('input')
-  //     input.type = 'file'
-  //     input.accept = 'image/*,video/*'
-  //     input.onchange = (e) => {
-  //       const file = (e.target as HTMLInputElement).files?.[0]
-  //       if (file) {
-  //         handleFileSelect(file)
-  //       }
-  //     }
-  //     input.click()
-  //   } catch (error) {
-  //     console.error('Galeriezugriff fehlgeschlagen:', error)
-  //     setState(prev => ({ ...prev, error: 'Zugriff auf Galerie nicht möglich' }))
-  //   }
-  // }
+  const handleGallerySelect = () => {
+    try {
+      const input = document.createElement('input')
+      input.type = 'file'
+      input.accept = 'image/*,video/*'
+      input.onchange = (e) => {
+        const file = (e.target as HTMLInputElement).files?.[0]
+        if (file) {
+          handleFileSelect(file)
+        }
+      }
+      input.click()
+    } catch (error) {
+      console.error('Galeriezugriff fehlgeschlagen:', error)
+      setState(prev => ({ ...prev, error: 'Zugriff auf Galerie nicht möglich' }))
+    }
+  }
 
   const handleUpload = async () => {
     if (!state.selectedFile || !state.event) return
@@ -567,22 +552,22 @@ export default function UploadPage() {
                 >
                   Abbrechen
                 </button>
+
+                {state.isUploading && state.uploadProgress > 0 && (
+  <>
+    <div className="mt-2 text-sm text-gray-600 text-center">
+      {state.uploadProgress}%
+    </div>
+    <div className="mt-1 w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
+      <div
+        className="bg-blue-600 h-full transition-all duration-200"
+        style={{ width: `${state.uploadProgress}%` }}
+      ></div>
+    </div>
+  </>
+)}
+            
               </div>
-
-              {state.isUploading && state.uploadProgress > 0 && (
-                <>
-                  <div className="mt-2 text-sm text-gray-600 text-center">
-                    {state.uploadProgress}%
-                  </div>
-                  <div className="mt-1 w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
-                    <div
-                      className="bg-blue-600 h-full transition-all duration-200"
-                      style={{ width: `${state.uploadProgress}%` }}
-                    ></div>
-                  </div>
-                </>
-              )}
-
             </div>
           </div>
         )}
