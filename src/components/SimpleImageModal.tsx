@@ -9,6 +9,7 @@ interface ImageItem {
   alt: string
   title?: string
   description?: string
+  file_type?: string
 }
 
 interface SimpleImageModalProps {
@@ -57,6 +58,8 @@ export default function SimpleImageModal({
   }, [isOpen, onClose, canGoNext, canGoPrevious, onNext, onPrevious])
 
   if (!isOpen) return null
+
+  const isVideo = image.file_type?.startsWith('video/')
 
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
@@ -108,11 +111,21 @@ export default function SimpleImageModal({
         className="relative max-w-4xl max-h-full bg-white rounded-lg overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <img
-          src={image.url}
-          alt={image.alt}
-          className="max-w-full max-h-[80vh] object-contain"
-        />
+        {isVideo ? (
+          <video
+            src={image.url}
+            className="max-w-full max-h-[80vh] object-contain"
+            controls
+            muted
+            playsInline
+          />
+        ) : (
+          <img
+            src={image.url}
+            alt={image.alt}
+            className="max-w-full max-h-[80vh] object-contain"
+          />
+        )}
         
         {(image.title || image.description) && (
           <div className="p-4 border-t">

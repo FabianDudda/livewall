@@ -2,9 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
-import { Camera, Upload, Image as ImageIcon, X, Check, AlertCircle, MessageSquare } from 'lucide-react'
+import { Camera, Upload, Image as ImageIcon, X, Check, AlertCircle } from 'lucide-react'
 import SimpleImageGallery from '@/components/SimpleImageGallery'
-import MessageModal from '@/components/MessageModal'
 import { supabase } from '@/lib/supabase'
 import { uploadGuestImage } from '@/lib/guestUpload'
 import { Database } from '@/lib/supabase'
@@ -30,7 +29,22 @@ interface UploadPageState {
   isPasswordProtected: boolean
   isAuthenticated: boolean
   passwordError: string | null
-  showMessageModal: boolean
+}
+
+// Utility functions for uploader name persistence
+const UPLOADER_NAME_KEY = (eventId: string) => `livewall_uploader_name_${eventId}`
+
+const saveUploaderName = (eventId: string, name: string) => {
+  if (typeof window !== 'undefined' && eventId && name.trim()) {
+    localStorage.setItem(UPLOADER_NAME_KEY(eventId), name.trim())
+  }
+}
+
+const loadUploaderName = (eventId: string): string => {
+  if (typeof window !== 'undefined' && eventId) {
+    return localStorage.getItem(UPLOADER_NAME_KEY(eventId)) || ''
+  }
+  return ''
 }
 
 export default function UploadPage() {
@@ -53,7 +67,6 @@ export default function UploadPage() {
     isPasswordProtected: false,
     isAuthenticated: false,
     passwordError: null,
-    showMessageModal: false
   })
 
   const [formData, setFormData] = useState({
@@ -70,6 +83,16 @@ export default function UploadPage() {
       loadEventData()
     }
   }, [eventCode])
+
+  // Load saved uploader name when eventId is available
+  useEffect(() => {
+    if (eventId) {
+      const savedName = loadUploaderName(eventId)
+      if (savedName) {
+        setFormData(prev => ({ ...prev, name: savedName }))
+      }
+    }
+  }, [eventId])
 
 
   const loadEventData = async () => {
@@ -192,6 +215,26 @@ export default function UploadPage() {
     }
   }
 
+  const handleVideoCameraCapture = async () => {
+    try {
+      // Create file input that specifically opens video camera
+      const input = document.createElement('input')
+      input.type = 'file'
+      input.accept = 'video/*'
+      input.setAttribute('capture', 'camcorder') // This forces video camera to open
+      input.onchange = (e) => {
+        const file = (e.target as HTMLInputElement).files?.[0]
+        if (file) {
+          handleFileSelect(file)
+        }
+      }
+      input.click()
+    } catch (error) {
+      console.error('Video camera access error:', error)
+      setState(prev => ({ ...prev, error: 'Video-Kamera-Zugriff nicht möglich' }))
+    }
+  }
+
   const handleGallerySelect = () => {
     try {
       const input = document.createElement('input')
@@ -239,7 +282,8 @@ export default function UploadPage() {
           uploadProgress: 100
         }))
         
-        setFormData({ name: '', comment: '', challengeId: '' })
+        // Reset form but preserve the name for next upload
+        setFormData(prev => ({ name: prev.name, comment: '', challengeId: '' }))
         await loadUploads() // Refresh uploads
         
         // Clear success message after 3 seconds
@@ -276,7 +320,8 @@ export default function UploadPage() {
       previewUrl: null,
       error: null
     }))
-    setFormData({ name: '', comment: '', challengeId: '' })
+    // Reset form but preserve the name
+    setFormData(prev => ({ name: prev.name, comment: '', challengeId: '' }))
   }
 
   const handlePasswordSubmit = async (password: string) => {
@@ -302,19 +347,6 @@ export default function UploadPage() {
       console.error('Password verification error:', error)
       setState(prev => ({ ...prev, passwordError: 'Fehler bei der Passwort-Überprüfung' }))
     }
-  }
-
-  const handleMessageSent = (_message: { id: string; eventId: string; message: string; senderName?: string; timestamp: number }) => {
-    setState(prev => ({ 
-      ...prev, 
-      success: 'Nachricht erfolgreich gesendet!',
-      showMessageModal: false
-    }))
-    
-    // Clear success message after 3 seconds
-    setTimeout(() => {
-      setState(prev => ({ ...prev, success: null }))
-    }, 3000)
   }
 
   if (state.isLoading) {
@@ -489,7 +521,14 @@ export default function UploadPage() {
                 <input
                   type="text"
                   value={formData.name}
-                  onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                  onChange={(e) => {
+                    const newName = e.target.value
+                    setFormData(prev => ({ ...prev, name: newName }))
+                    // Automatically save name to localStorage when user types
+                    if (eventId) {
+                      saveUploaderName(eventId, newName)
+                    }
+                  }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Wie heißt du?"
                 />
@@ -554,25 +593,25 @@ export default function UploadPage() {
                 </button>
 
                 {state.isUploading && state.uploadProgress > 0 && (
-  <>
-    <div className="mt-2 text-sm text-gray-600 text-center">
-      {state.uploadProgress}%
-    </div>
-    <div className="mt-1 w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
-      <div
-        className="bg-blue-600 h-full transition-all duration-200"
-        style={{ width: `${state.uploadProgress}%` }}
-      ></div>
-    </div>
-  </>
-)}
+                  <>
+                    <div className="mt-2 text-sm text-gray-600 text-center">
+                      {state.uploadProgress}%
+                    </div>
+                    <div className="mt-1 w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
+                      <div
+                        className="bg-blue-600 h-full transition-all duration-200"
+                        style={{ width: `${state.uploadProgress}%` }}
+                      ></div>
+                    </div>
+                  </>
+                )}
             
               </div>
             </div>
           </div>
         )}
 
-        {/* Adnroid Kamera/Galerie Abfrage */}
+        {/* Android Kamera/Galerie Abfrage */}
         {showUploadModal && (
           <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center">
             <div className="bg-white rounded-xl p-6 shadow-lg max-w-sm w-full text-center space-y-4">
@@ -585,7 +624,16 @@ export default function UploadPage() {
                   }}
                   className="bg-gray-800 hover:bg-gray-900 text-white px-4 py-2 rounded-lg font-medium flex items-center justify-center gap-2"
                 >
-                  📸 Kamera verwenden
+                  📸 Kamera Foto
+                </button>
+                <button
+                  onClick={() => {
+                    setShowUploadModal(false)
+                    handleVideoCameraCapture()
+                  }}
+                  className="bg-gray-800 hover:bg-gray-900 text-white px-4 py-2 rounded-lg font-medium flex items-center justify-center gap-2"
+                >
+                  🎥 Kamera Video
                 </button>
                 <button
                   onClick={() => {
@@ -633,21 +681,14 @@ export default function UploadPage() {
                   alt: upload.uploader_name || 'Upload',
                   title: upload.uploader_name || 'Anonymer Nutzer',
                   description: upload.comment || undefined,
-                  challengeTitle: challenge?.hashtag || challenge?.title.toLowerCase().replace(/\s+/g, '')
+                  challengeTitle: challenge?.hashtag || challenge?.title.toLowerCase().replace(/\s+/g, ''),
+                  file_type: upload.file_type
                 }
               })}
             />
           )}
         </div>
       </div>
-      
-      {/* Message Modal */}
-      <MessageModal
-        isOpen={state.showMessageModal}
-        onClose={() => setState(prev => ({ ...prev, showMessageModal: false }))}
-        eventId={eventId!}
-        onMessageSent={handleMessageSent}
-      />
     </div>
   )
 }

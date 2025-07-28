@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Check, X, Eye } from 'lucide-react'
+import { Check, X, Eye, Play } from 'lucide-react'
 import SimpleImageModal from './SimpleImageModal'
 
 interface ImageItem {
@@ -12,6 +12,7 @@ interface ImageItem {
   description?: string
   approved?: boolean
   challengeTitle?: string
+  file_type?: string
 }
 
 interface ActionButton {
@@ -58,18 +59,40 @@ export default function SimpleImageGallery({
   return (
     <>
       <div className={`grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 ${className}`}>
-        {images.map((image) => (
-          <div
-            key={image.id}
-            className="relative aspect-square bg-gray-100 rounded-lg overflow-hidden group"
-          >
-            <img
-              src={image.url || "https://csswouhdugmztnnglcdn.supabase.co/storage/v1/object/public/app//fallback.jpg"}
-              alt={image.alt}
-              className="w-full h-full object-cover cursor-pointer transition-opacity group-hover:opacity-50"
-              loading="lazy"
-              onClick={() => handleImageClick(image)}
-            />
+        {images.map((image) => {
+          const isVideo = image.file_type?.startsWith('video/')
+          
+          return (
+            <div
+              key={image.id}
+              className="relative aspect-square bg-gray-100 rounded-lg overflow-hidden group"
+            >
+              {isVideo ? (
+                <video
+                  src={image.url || "https://csswouhdugmztnnglcdn.supabase.co/storage/v1/object/public/app//fallback.jpg"}
+                  className="w-full h-full object-cover cursor-pointer transition-opacity group-hover:opacity-50"
+                  muted
+                  preload="metadata"
+                  onClick={() => handleImageClick(image)}
+                />
+              ) : (
+                <img
+                  src={image.url || "https://csswouhdugmztnnglcdn.supabase.co/storage/v1/object/public/app//fallback.jpg"}
+                  alt={image.alt}
+                  className="w-full h-full object-cover cursor-pointer transition-opacity group-hover:opacity-50"
+                  loading="lazy"
+                  onClick={() => handleImageClick(image)}
+                />
+              )}
+
+              {/* Play button overlay for videos */}
+              {isVideo && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="bg-black bg-opacity-50 rounded-full p-3 opacity-70 group-hover:opacity-90 transition-opacity">
+                    <Play className="w-8 h-8 text-white fill-current" />
+                  </div>
+                </div>
+              )}
             
             {/* Challenge Hashtag */}
             {image.challengeTitle && (
@@ -115,8 +138,9 @@ export default function SimpleImageGallery({
                 </div>
               </div>
             )}
-          </div>
-        ))}
+            </div>
+          )
+        })}
       </div>
 
       {selectedImage && (

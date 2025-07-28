@@ -1124,7 +1124,8 @@ export default function EventDetail() {
                         title: upload.uploader_name || 'Anonymer Nutzer',
                         description: upload.comment || undefined,
                         approved: upload.approved,
-                        challengeTitle: challenge?.hashtag || challenge?.title.toLowerCase().replace(/\s+/g, '')
+                        challengeTitle: challenge?.hashtag || challenge?.title.toLowerCase().replace(/\s+/g, ''),
+                        file_type: upload.file_type
                       }
                     })}
                     showActions={true}
