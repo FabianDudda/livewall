@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import { Camera, Upload, Image as ImageIcon, X, Check, AlertCircle } from 'lucide-react'
 import SimpleImageGallery from '@/components/SimpleImageGallery'
@@ -76,6 +76,11 @@ export default function UploadPage() {
   })
 
   const [showUploadModal, setShowUploadModal] = useState(false)
+  const [isClosing, setIsClosing] = useState(false)
+  const bottomSheetRef = useRef<HTMLDivElement>(null)
+  const startY = useRef(0)
+  const currentY = useRef(0)
+  const isDragging = useRef(false)
 
 
   useEffect(() => {
@@ -94,6 +99,83 @@ export default function UploadPage() {
     }
   }, [eventId])
 
+  // Handle escape key and focus management
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && showUploadModal) {
+        handleCloseModal()
+      }
+    }
+
+    if (showUploadModal) {
+      document.addEventListener('keydown', handleKeyDown)
+      document.body.style.overflow = 'hidden'
+      
+      // Focus the bottom sheet for accessibility
+      setTimeout(() => {
+        bottomSheetRef.current?.focus()
+      }, 100)
+    } else {
+      document.body.style.overflow = 'unset'
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      document.body.style.overflow = 'unset'
+    }
+  }, [showUploadModal])
+
+  const handleCloseModal = () => {
+    setIsClosing(true)
+    setTimeout(() => {
+      setShowUploadModal(false)
+      setIsClosing(false)
+    }, 300)
+  }
+
+  // Touch handlers for swipe-to-dismiss
+  const handleTouchStart = (e: React.TouchEvent) => {
+    startY.current = e.touches[0].clientY
+    currentY.current = startY.current
+    isDragging.current = true
+  }
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isDragging.current || !bottomSheetRef.current) return
+
+    currentY.current = e.touches[0].clientY
+    const deltaY = Math.max(0, currentY.current - startY.current)
+    
+    // Apply transform during drag
+    bottomSheetRef.current.style.transform = `translateY(${deltaY}px)`
+    
+    // Fade backdrop based on drag distance
+    const backdrop = bottomSheetRef.current.parentElement
+    if (backdrop) {
+      const opacity = Math.max(0.4 - (deltaY / 400), 0)
+      backdrop.style.backgroundColor = `rgba(0, 0, 0, ${opacity})`
+    }
+  }
+
+  const handleTouchEnd = () => {
+    if (!isDragging.current || !bottomSheetRef.current) return
+    
+    const deltaY = currentY.current - startY.current
+    const threshold = 100 // Close if dragged more than 100px down
+    
+    if (deltaY > threshold) {
+      handleCloseModal()
+    } else {
+      // Snap back to original position
+      bottomSheetRef.current.style.transform = 'translateY(0)'
+      const backdrop = bottomSheetRef.current.parentElement
+      if (backdrop) {
+        backdrop.style.backgroundColor = 'rgba(0, 0, 0, 0.4)'
+      }
+    }
+    
+    isDragging.current = false
+  }
 
   const loadEventData = async () => {
     try {
@@ -611,46 +693,83 @@ export default function UploadPage() {
           </div>
         )}
 
-        {/* Android Kamera/Galerie Abfrage */}
+        {/* Bottom Sheet Upload Modal */}
         {showUploadModal && (
-          <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center">
-            <div className="bg-white rounded-xl p-6 shadow-lg max-w-sm w-full text-center space-y-4">
-              <h2 className="text-lg font-semibold">Was möchtest du tun?</h2>
-              <div className="flex flex-col space-y-3">
-                <button
-                  onClick={() => {
-                    setShowUploadModal(false)
-                    handleCameraCapture()
-                  }}
-                  className="bg-gray-800 hover:bg-gray-900 text-white px-4 py-2 rounded-lg font-medium flex items-center justify-center gap-2"
-                >
-                  📸 Kamera Foto
-                </button>
-                <button
-                  onClick={() => {
-                    setShowUploadModal(false)
-                    handleVideoCameraCapture()
-                  }}
-                  className="bg-gray-800 hover:bg-gray-900 text-white px-4 py-2 rounded-lg font-medium flex items-center justify-center gap-2"
-                >
-                  🎥 Kamera Video
-                </button>
-                <button
-                  onClick={() => {
-                    setShowUploadModal(false)
-                    handleGallerySelect()
-                  }}
-                  className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg font-medium flex items-center justify-center gap-2"
-                >
-                  🖼️ Galerie auswählen
-                </button>
+          <div 
+            className={`fixed inset-0 z-50 transition-all duration-300 ease-out ${
+              isClosing ? 'bg-black/0' : 'bg-black/40'
+            }`}
+            onClick={handleCloseModal}
+          >
+            <div
+              ref={bottomSheetRef}
+              tabIndex={-1}
+              className={`fixed bottom-0 left-0 right-0 bg-white rounded-t-xl shadow-2xl transition-transform duration-300 ease-out focus:outline-none ${
+                isClosing ? 'translate-y-full' : 'translate-y-0'
+              }`}
+              onClick={(e) => e.stopPropagation()}
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+            >
+              {/* Drag Handle */}
+              <div className="flex justify-center pt-3 pb-2">
+                <div className="w-10 h-1 bg-gray-300 rounded-full"></div>
               </div>
-              <button
-                onClick={() => setShowUploadModal(false)}
-                className="text-sm text-gray-500 hover:underline mt-2"
-              >
-                Abbrechen
-              </button>
+              
+              {/* Content */}
+              <div className="px-6 pb-6">
+                <div className="text-center mb-6">
+                  <h2 className="text-lg font-semibold text-gray-900">Was möchtest du tun?</h2>
+                </div>
+                
+                <div className="space-y-3">
+                  <button
+                    onClick={() => {
+                      handleCloseModal()
+                      setTimeout(() => handleCameraCapture(), 300)
+                    }}
+                    className="w-full bg-gray-800 hover:bg-gray-900 active:bg-gray-700 text-white px-6 py-4 rounded-xl font-medium flex items-center justify-center gap-3 transition-all duration-200 active:scale-[0.98] touch-manipulation"
+                  >
+                    <span className="text-xl">📸</span>
+                    <span>Kamera Foto</span>
+                  </button>
+                  
+                  <button
+                    onClick={() => {
+                      handleCloseModal()
+                      setTimeout(() => handleVideoCameraCapture(), 300)
+                    }}
+                    className="w-full bg-gray-800 hover:bg-gray-900 active:bg-gray-700 text-white px-6 py-4 rounded-xl font-medium flex items-center justify-center gap-3 transition-all duration-200 active:scale-[0.98] touch-manipulation"
+                  >
+                    <span className="text-xl">🎥</span>
+                    <span>Kamera Video</span>
+                  </button>
+                  
+                  <button
+                    onClick={() => {
+                      handleCloseModal()
+                      setTimeout(() => handleGallerySelect(), 300)
+                    }}
+                    className="w-full bg-gray-200 hover:bg-gray-300 active:bg-gray-400 text-gray-800 px-6 py-4 rounded-xl font-medium flex items-center justify-center gap-3 transition-all duration-200 active:scale-[0.98] touch-manipulation"
+                  >
+                    <span className="text-xl">🖼️</span>
+                    <span>Galerie auswählen</span>
+                  </button>
+                </div>
+                
+                <div className="mt-6 text-center">
+                  <button
+                    onClick={handleCloseModal}
+                    className="text-gray-500 hover:text-gray-700 py-2 px-4 transition-colors touch-manipulation"
+                  >
+                    Abbrechen
+                  </button>
+                </div>
+                
+                {/* Safe area padding for devices with home indicators */}
+                <div className="pb-safe-area-inset-bottom"></div>
+              </div>
             </div>
           </div>
         )}

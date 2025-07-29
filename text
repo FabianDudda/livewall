@@ -1,66 +1,40 @@
-In event/[eventcode]/dashboard/page.tsx under the settings tab:
+You are an experienced React/NextJs developer with decades of experience at top tech companies.
 
-- Create a button to delete the event with all its data from the ui and the database
-- Ask the user to confirm the deletion
-- Also delete all uploads and challenges for this event from the ui and the database
-- Show a success message after deletion
-- After deletion, redirect to the dashboard/page.tsx
+Task: Implement mobile-friendly action buttons for the SimpleImageGallery component using the recommended bottom action bar + three-dot menu approach.
 
+  Requirements:
+  1. Desktop behavior: Keep existing hover overlay with action buttons centered
+  2. Mobile behavior: Show translucent bottom action bar with primary actions + overflow menu
+  3. Touch targets: Ensure all buttons are at least 44px for accessibility
+  4. Responsive breakpoint: Use md: (768px) to differentiate mobile from desktop
 
----
+  Key Changes Needed:
 
+  SimpleImageGallery.tsx modifications:
 
-You are a senior React/Next.js developer. You need to implement a delete event feature in the settings tab of an event dashboard page.
+  1. Add state for mobile menu:
+  const [showMobileMenu, setShowMobileMenu] = useState<string | null>(null)
 
-**Context:**
-- File location: `event/[eventcode]/dashboard/page.tsx`
-- The page has a settings tab where the delete functionality should be added
+  2. Replace current action buttons section (lines 117-140) with:
+  - Desktop: Existing hover overlay behavior
+  - Mobile: Bottom gradient bar with primary actions (approve/reject) + three-dot menu for secondary actions (delete)
 
-**Requirements:**
-1. Create a delete button in the settings tab with appropriate styling and warning indicators (red color, trash icon, etc.)
-2. Implement a confirmation dialog/modal that clearly warns the user about the permanent nature of this action
-3. The deletion should remove:
-  - The event itself from the database
-  - All associated uploads for this event from the database
-  - All associated challenges for this event from the database
-  - Update the UI state accordingly
-4. Show a success toast/notification after successful deletion
-5. Redirect the user to `/dashboard` after successful deletion
-6. Include proper error handling with user-friendly error messages
-7. Add loading states during the deletion process to prevent multiple clicks
+  3. Add mobile menu modal/dropdown that appears when three-dot button is tapped
+  4. Update action button rendering logic to:
+  - Show max 2 primary actions in bottom bar on mobile
+  - Put remaining actions in overflow menu
+  - Use proper touch-friendly sizing (min 44px touch targets)
 
------
+  Visual Design:
+  - Bottom bar: bg-gradient-to-t from-black/60 to-transparent
+  - Buttons: White background with rounded corners, proper spacing
+  - Three-dot menu: Positioned at bottom-right of action bar
+  - Menu modal: Slide up from bottom on mobile, centered overlay on larger screens
 
+  Accessibility:
+  - Proper ARIA labels for all buttons
+  - Keyboard navigation support
+  - Focus management for menu interactions
+  - Screen reader friendly button descriptions
 
-You are a senior React/Next.js developer. You need to implement a comprehensive "Forgot Password" feature using Supabase authentication. This should be a complete, production-ready component that handles the entire password reset flow.
-
-## Core Requirements:
-1. **Reset Request Form**: A clean, user-friendly form with:
-  - Email input field with proper validation
-  - "Reset Password" button
-  - Loading states during API calls
-  - Clear error handling and user feedback
-
-2. **Email Reset Logic**: 
-  - Use `supabase.auth.resetPasswordForEmail(email)` to send reset links
-  - Handle various error scenarios (invalid email, email not found, network issues)
-  - Display appropriate error messages to users
-  - Show success confirmation when reset email is sent
-
-3. **Password Recovery Handler**:
-  - Implement `onAuthStateChange` listener for the `PASSWORD_RECOVERY` event
-  - Detect when users return from clicking the reset link
-  - Present a secure form for entering the new password
-  - Use `supabase.auth.updateUser()` to update the password
-  - Include password confirmation and validation
-
-## Technical Specifications:
-- Use React hooks (useState, useEffect) for state management
-- Implement proper form validation and user experience patterns
-- Include loading states, error boundaries, and success feedback
-- Make the component responsive and accessible
-- Handle edge cases and provide clear user guidance throughout the flow
-
-## Additional Considerations:
-- Include proper TypeScript types
-- Add comments explaining the authentication flow
+  Implement this solution while maintaining the existing TypeScript interfaces and props structure. Ensure the solution works with the current getActionButtons callback pattern used in the dashboard.
