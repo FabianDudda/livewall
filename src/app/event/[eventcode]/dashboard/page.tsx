@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
-import { LogOut, ArrowLeft, Users, Image, Target, Copy, ExternalLink, QrCode, Plus, Grid, List, Check, X, Eye, Trash2, EyeOff, Download, Edit } from 'lucide-react'
+import { LogOut, ArrowLeft, Users, Image, Target, Copy, ExternalLink, QrCode, Plus, Grid, List, Check, X, Eye, Trash2, EyeOff, Download, Edit, AlertCircle } from 'lucide-react'
 import SimpleImageGallery from '@/components/SimpleImageGallery'
 import { supabase } from '@/lib/supabase'
 import { Database } from '@/lib/supabase'
@@ -55,6 +55,7 @@ export default function EventDetail() {
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
   useEffect(() => {
     if (!loading && !user) {
@@ -300,10 +301,15 @@ export default function EventDetail() {
       }
       
       // Show success message or redirect
-      const successMessage = autoApproval && !event.auto_approval 
+      const message = autoApproval && !event.auto_approval 
         ? 'Event erfolgreich aktualisiert! Alle wartenden Bilder wurden automatisch freigegeben.'
         : 'Event erfolgreich aktualisiert!'
-      alert(successMessage)
+      setSuccessMessage(message)
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => {
+        setSuccessMessage(null)
+      }, 3000)
 
     } catch (err) {
       console.error('Error updating event:', err)
@@ -441,7 +447,12 @@ export default function EventDetail() {
       }))
 
       // Show success message
-      alert('Upload erfolgreich gelöscht')
+      setSuccessMessage('Upload erfolgreich gelöscht')
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => {
+        setSuccessMessage(null)
+      }, 3000)
 
     } catch (error) {
       console.error('Error deleting upload:', error)
@@ -483,7 +494,8 @@ export default function EventDetail() {
       const approvedUploads = uploads.filter(upload => upload.approved)
 
       if (approvedUploads.length === 0) {
-        alert('Keine freigegebenen Bilder zum Herunterladen verfügbar.')
+        setError('Keine freigegebenen Bilder zum Herunterladen verfügbar.')
+        setTimeout(() => setError(null), 3000)
         return
       }
 
@@ -742,8 +754,10 @@ export default function EventDetail() {
       }
 
       // Success - show message and redirect
-      alert('Event wurde erfolgreich gelöscht!')
-      router.push('/dashboard')
+      setSuccessMessage('Event wurde erfolgreich gelöscht!')
+      setTimeout(() => {
+        router.push('/dashboard')
+      }, 1500)
 
     } catch (error) {
       console.error('Error deleting event:', error)
@@ -866,6 +880,25 @@ export default function EventDetail() {
           </nav>
         </div>
       </div>
+
+      {/* Success/Error Messages */}
+      {successMessage && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
+          <div className="bg-green-50 border border-green-100 text-green-800 px-6 py-4 rounded-2xl flex items-center shadow-sm">
+            <Check className="w-5 h-5 mr-3 text-green-600" />
+            {successMessage}
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
+          <div className="bg-red-50 border border-red-100 text-red-800 px-6 py-4 rounded-2xl flex items-center shadow-sm">
+            <AlertCircle className="w-5 h-5 mr-3 text-red-600" />
+            {error}
+          </div>
+        </div>
+      )}
 
       {/* Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -1236,8 +1269,9 @@ export default function EventDetail() {
               <h3 className="text-lg font-semibold text-gray-900 mb-6">Event-Einstellungen</h3>
               
               {updateError && (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-                  <div className="text-red-600 text-sm">{updateError}</div>
+                <div className="bg-red-50 border border-red-100 text-red-800 px-6 py-4 rounded-2xl flex items-center shadow-sm mb-6">
+                  <AlertCircle className="w-5 h-5 mr-3 text-red-600" />
+                  {updateError}
                 </div>
               )}
               
@@ -1479,8 +1513,9 @@ export default function EventDetail() {
                     </p>
                     
                     {deleteError && (
-                      <div className="bg-red-100 border border-red-300 rounded-lg p-3 mb-4">
-                        <div className="text-red-800 text-sm">{deleteError}</div>
+                      <div className="bg-red-50 border border-red-100 text-red-800 px-6 py-4 rounded-2xl flex items-center shadow-sm mb-4">
+                        <AlertCircle className="w-5 h-5 mr-3 text-red-600" />
+                        {deleteError}
                       </div>
                     )}
                     
