@@ -67,6 +67,7 @@ export default function Dashboard() {
     event_code: string
     cover_image_url?: string | null
     created_at: string
+    upload_limit: number
   }) => {
     // Convert the partial event to a full Event object with defaults
     const fullEvent: Event = {
@@ -83,7 +84,7 @@ export default function Dashboard() {
       image_display_duration: 10,
       upload_header_gradient: 'from-gray-50 to-white',
       livewall_background_gradient: 'from-purple-900 via-blue-900 to-indigo-900',
-      ordering_mode: 'newest-first'
+      upload_limit: newEvent.upload_limit
     }
     setEvents(prev => [fullEvent, ...prev])
     setIsEventModalOpen(false)

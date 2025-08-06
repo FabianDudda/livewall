@@ -16,6 +16,7 @@ interface EventModalProps {
     event_code: string
     cover_image_url?: string | null
     created_at: string
+    upload_limit: number
   }) => void
 }
 
