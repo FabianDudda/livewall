@@ -30,7 +30,7 @@ export type Database = {
           image_display_duration: number | null
           upload_header_gradient: string | null
           livewall_background_gradient: string | null
-          ordering_mode: string | null
+          upload_limit: number
         }
         Insert: {
           id?: string
@@ -46,7 +46,7 @@ export type Database = {
           image_display_duration?: number | null
           upload_header_gradient?: string | null
           livewall_background_gradient?: string | null  
-          ordering_mode?: string | null
+          upload_limit: number
         }
         Update: {
           id?: string
@@ -62,7 +62,7 @@ export type Database = {
           image_display_duration?: number | null
           upload_header_gradient?: string | null
           livewall_background_gradient?: string | null
-          ordering_mode?: string | null
+          upload_limit: number
         }
       }
       uploads: {

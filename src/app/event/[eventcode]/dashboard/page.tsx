@@ -1,10 +1,10 @@
 'use client'
 
 import { useAuth } from '@/contexts/AuthContext'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
-import { LogOut, ArrowLeft, Users, Image, Target, Copy, ExternalLink, QrCode, Plus, Grid, List, Check, X, Eye, Trash2, EyeOff, Download, Edit, AlertCircle } from 'lucide-react'
+import { LogOut, ArrowLeft, Users, Image, Target, Copy, ExternalLink, QrCode, Plus, Grid, List, Check, X, Eye, Trash2, EyeOff, Download, Edit, AlertCircle, Upload, Zap } from 'lucide-react'
 import SimpleImageGallery from '@/components/SimpleImageGallery'
 import { supabase } from '@/lib/supabase'
 import { Database } from '@/lib/supabase'
@@ -26,6 +26,7 @@ interface EventStats {
 export default function EventDetail() {
   const { user, loading, signOut } = useAuth()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const params = useParams()
   const eventCode = params.eventcode as string
   const [eventId, setEventId] = useState<string | null>(null)
@@ -56,6 +57,8 @@ export default function EventDetail() {
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const [isUpgrading, setIsUpgrading] = useState(false)
+  const [upgradeError, setUpgradeError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!loading && !user) {
@@ -68,6 +71,34 @@ export default function EventDetail() {
       fetchEventData()
     }
   }, [user, eventCode])
+
+  useEffect(() => {
+    // Check for upgrade success/failure in URL params
+    const upgrade = searchParams.get('upgrade')
+    if (upgrade === 'success') {
+      setSuccessMessage('Upgrade erfolgreich! Ihr Event unterstützt jetzt 200 Uploads.')
+      // Refresh event data to show updated upload limit
+      if (user && eventCode) {
+        fetchEventData()
+      }
+      // Clear the URL parameter
+      router.replace(`/event/${eventCode}/dashboard`, undefined)
+      
+      // Clear success message after 5 seconds
+      setTimeout(() => {
+        setSuccessMessage(null)
+      }, 5000)
+    } else if (upgrade === 'cancelled') {
+      setError('Upgrade wurde abgebrochen.')
+      // Clear the URL parameter
+      router.replace(`/event/${eventCode}/dashboard`, undefined)
+      
+      // Clear error message after 3 seconds
+      setTimeout(() => {
+        setError(null)
+      }, 3000)
+    }
+  }, [searchParams, user, eventCode, router])
 
   const fetchEventData = async () => {
     try {
@@ -165,6 +196,52 @@ export default function EventDetail() {
     const { error } = await signOut()
     if (!error) {
       router.push('/')
+    }
+  }
+
+  const handleUpgradeEvent = async () => {
+    if (!event || !eventId) return
+
+    setIsUpgrading(true)
+    setUpgradeError(null)
+
+    try {
+      // Get the current session
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session?.access_token) {
+        throw new Error('Keine gültige Authentifizierung gefunden')
+      }
+
+      const response = await fetch('/api/upgrade-event', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          eventId: eventId,
+          eventCode: event.event_code,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create upgrade session')
+      }
+
+      // Redirect to Stripe Checkout
+      if (data.url) {
+        window.location.href = data.url
+      } else {
+        throw new Error('No checkout URL received')
+      }
+    } catch (error) {
+      console.error('Upgrade error:', error)
+      setUpgradeError(error instanceof Error ? error.message : 'Fehler beim Upgrade')
+    } finally {
+      setIsUpgrading(false)
     }
   }
 
@@ -900,6 +977,15 @@ export default function EventDetail() {
         </div>
       )}
 
+      {upgradeError && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
+          <div className="bg-red-50 border border-red-100 text-red-800 px-6 py-4 rounded-2xl flex items-center shadow-sm">
+            <AlertCircle className="w-5 h-5 mr-3 text-red-600" />
+            {upgradeError}
+          </div>
+        </div>
+      )}
+
       {/* Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === 'overview' && (
@@ -913,7 +999,13 @@ export default function EventDetail() {
                   </div>
                   <div className="ml-4">
                     <p className="text-sm font-medium text-gray-600">Uploads</p>
-                    <p className="text-2xl font-bold text-gray-900">{stats.totalUploads}</p>
+                    <p className="text-2xl font-bold text-gray-900">
+                      {stats.totalUploads}
+                      <span className="text-sm font-normal text-gray-500">/{event.upload_limit}</span>
+                    </p>
+                    {stats.totalUploads >= event.upload_limit && (
+                      <p className="text-xs text-orange-600 mt-1">Limit erreicht</p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1014,7 +1106,7 @@ export default function EventDetail() {
             </div>
 
             {/* Actions */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <button 
                 onClick={handleDownloadQRCode}
                 className="bg-white p-6 rounded-lg shadow-sm border hover:shadow-md transition-shadow text-left"
@@ -1068,6 +1160,33 @@ export default function EventDetail() {
                   </div>
                 </div>
               </button>
+
+              {/* Upgrade Card - only show if event has less than 200 upload limit */}
+              {event.upload_limit < 200 && (
+                <button 
+                  onClick={handleUpgradeEvent}
+                  disabled={isUpgrading}
+                  className="bg-gradient-to-br from-orange-50 to-orange-100 p-6 rounded-lg shadow-sm border border-orange-200 hover:shadow-md transition-shadow text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="bg-orange-100 p-3 rounded-full border border-orange-200">
+                      {isUpgrading ? (
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-orange-600"></div>
+                      ) : (
+                        <Zap className="w-6 h-6 text-orange-600" />
+                      )}
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-gray-900">
+                        {isUpgrading ? 'Wird verarbeitet...' : 'Auf 200 Uploads upgraden'}
+                      </h3>
+                      <p className="text-gray-600 text-sm">
+                        {isUpgrading ? 'Weiterleitung zu Stripe...' : '$4.99 für erweiterte Upload-Kapazität'}
+                      </p>
+                    </div>
+                  </div>
+                </button>
+              )}
             </div>
           </div>
         )}
