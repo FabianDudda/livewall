@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createClient } from '@supabase/supabase-js'
 
-if (!process.env.STRIPE_SECRET_KEY) {
-  throw new Error('STRIPE_SECRET_KEY is not configured')
+function getStripe() {
+  if (!process.env.STRIPE_SECRET_KEY) {
+    throw new Error('STRIPE_SECRET_KEY is not configured')
+  }
+  return new Stripe(process.env.STRIPE_SECRET_KEY, {
+    apiVersion: '2025-07-30.basil',
+  })
 }
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: '2025-07-30.basil',
-})
 
 // Use service role key for admin operations
 const supabaseAdmin = createClient(
@@ -28,6 +29,7 @@ export async function POST(request: NextRequest) {
   console.log('🔔 Webhook received')
   
   try {
+    const stripe = getStripe()
     const body = await request.text()
     const signature = request.headers.get('stripe-signature')
 
