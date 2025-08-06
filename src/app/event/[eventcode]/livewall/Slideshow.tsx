@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation'
 import { supabase, Database } from '@/lib/supabase'
 import QRCode from '@/components/QRCode'
 import { AnimatePresence, motion } from 'framer-motion'
+import { imagePreloader } from '@/lib/imagePreloader'
 
 type Upload = Database['public']['Tables']['uploads']['Row']
 type Event = Database['public']['Tables']['events']['Row']
@@ -18,11 +19,14 @@ export default function Slideshow({ event }: SlideshowProps) {
   const eventCode = params.eventcode as string
   const [queue, setQueue] = useState<Upload[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
+  const [isImageLoading, setIsImageLoading] = useState(false)
+  const [imageLoadError, setImageLoadError] = useState<string | null>(null)
 
   const queueRef = useRef<Upload[]>([])
   const currentIndexRef = useRef<number>(0)
   const pendingUploadsRef = useRef<Upload[]>([])
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
+  const preloadingRef = useRef(false)
 
   const fetchUploads = async () => {
     const { data: uploads, error } = await supabase
@@ -42,6 +46,75 @@ export default function Slideshow({ event }: SlideshowProps) {
     currentIndexRef.current = 0
     setCurrentIndex(0)
     pendingUploadsRef.current = []
+    
+    // Start preloading images after queue is set
+    if (uploads && uploads.length > 0) {
+      preloadUpcomingImages(0, uploads)
+    }
+  }
+
+  // Preload upcoming images (next 3 images)
+  const preloadUpcomingImages = async (startIndex: number, currentQueue: Upload[]) => {
+    if (preloadingRef.current) return // Prevent multiple simultaneous preloading
+    
+    preloadingRef.current = true
+    try {
+      const PRELOAD_COUNT = 3
+      const imagesToPreload: string[] = []
+      
+      // Get next 3 images (including videos, but they'll be filtered out)
+      for (let i = 1; i <= PRELOAD_COUNT; i++) {
+        const nextIndex = (startIndex + i) % currentQueue.length
+        const upload = currentQueue[nextIndex]
+        if (upload && !upload.file_type?.startsWith('video/')) {
+          imagesToPreload.push(upload.file_url)
+        }
+      }
+
+      if (imagesToPreload.length > 0) {
+        console.log(`🖼️ Preloading ${imagesToPreload.length} upcoming images...`)
+        const results = await imagePreloader.preloadBatch(imagesToPreload)
+        const successCount = results.filter(r => r.success).length
+        console.log(`✅ Preloaded ${successCount}/${imagesToPreload.length} images`)
+        
+        if (successCount < imagesToPreload.length) {
+          console.warn('⚠️ Some images failed to preload:', results.filter(r => !r.success))
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error preloading images:', error)
+    } finally {
+      preloadingRef.current = false
+    }
+  }
+
+  // Check if current image is loaded, with loading state management
+  const ensureCurrentImageLoaded = async (upload: Upload): Promise<boolean> => {
+    if (!upload || upload.file_type?.startsWith('video/')) {
+      return true // Videos don't need preloading
+    }
+
+    setIsImageLoading(true)
+    setImageLoadError(null)
+
+    try {
+      const result = await imagePreloader.preload(upload.file_url)
+      if (result.success) {
+        console.log(`✅ Current image loaded: ${upload.uploader_name} (${result.loadTime}ms)`)
+        setIsImageLoading(false)
+        return true
+      } else {
+        console.error(`❌ Failed to load current image: ${result.error}`)
+        setImageLoadError(result.error || 'Failed to load image')
+        setIsImageLoading(false)
+        return false
+      }
+    } catch (error) {
+      console.error('❌ Error loading current image:', error)
+      setImageLoadError('Error loading image')
+      setIsImageLoading(false)
+      return false
+    }
   }
 
   useEffect(() => {
@@ -127,7 +200,7 @@ export default function Slideshow({ event }: SlideshowProps) {
     }
   }, [event.id])
 
-  const goToNextSlide = () => {
+  const goToNextSlide = async () => {
     let nextIndex = currentIndexRef.current + 1
 
     if (pendingUploadsRef.current.length > 0) {
@@ -146,6 +219,9 @@ export default function Slideshow({ event }: SlideshowProps) {
 
       pendingUploadsRef.current = []
       nextIndex = currentIndexRef.current + 1
+      
+      // Preload new images after queue update
+      preloadUpcomingImages(nextIndex, updatedQueue)
     }
 
     if (nextIndex >= queueRef.current.length) {
@@ -153,8 +229,22 @@ export default function Slideshow({ event }: SlideshowProps) {
       return
     }
 
+    // Ensure next image is loaded before switching
+    const nextUpload = queueRef.current[nextIndex]
+    if (nextUpload) {
+      const isLoaded = await ensureCurrentImageLoaded(nextUpload)
+      if (!isLoaded) {
+        // If image failed to load, try the next one
+        console.warn('⚠️ Skipping failed image, trying next...')
+        nextIndex = (nextIndex + 1) % queueRef.current.length
+      }
+    }
+
     currentIndexRef.current = nextIndex
     setCurrentIndex(nextIndex)
+    
+    // Preload upcoming images for the new position
+    preloadUpcomingImages(nextIndex, queueRef.current)
   }
 
   const currentUpload = queue[currentIndex]
@@ -181,6 +271,13 @@ export default function Slideshow({ event }: SlideshowProps) {
   useEffect(() => {
     currentIndexRef.current = currentIndex
   }, [currentIndex])
+
+  // Preload current image when index changes
+  useEffect(() => {
+    if (currentUpload && !isVideo) {
+      ensureCurrentImageLoaded(currentUpload)
+    }
+  }, [currentUpload?.id, isVideo])
 
   const uploadUrl = `${window.location.origin}/event/${eventCode}/upload`
 
@@ -221,6 +318,28 @@ export default function Slideshow({ event }: SlideshowProps) {
           className="bg-white p-6 pb-20 rounded-lg shadow-2xl rotate-1 transition-transform duration-300 max-w-6xl max-h-[90vh] mx-auto"
         >
           <div className="relative">
+            {/* Loading indicator */}
+            {isImageLoading && !isVideo && (
+              <div className="absolute inset-0 flex items-center justify-center bg-gray-100 rounded-sm">
+                <div className="flex flex-col items-center gap-3">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  <p className="text-gray-600 text-sm">Bild wird geladen...</p>
+                </div>
+              </div>
+            )}
+            
+            {/* Error state */}
+            {imageLoadError && !isVideo && !isImageLoading && (
+              <div className="absolute inset-0 flex items-center justify-center bg-red-50 rounded-sm border-2 border-red-200">
+                <div className="text-center p-6">
+                  <div className="text-red-500 text-4xl mb-3">⚠️</div>
+                  <p className="text-red-700 font-medium mb-2">Bild konnte nicht geladen werden</p>
+                  <p className="text-red-600 text-sm">{imageLoadError}</p>
+                </div>
+              </div>
+            )}
+            
+            {/* Content */}
             {isVideo ? (
               <video
                 src={currentUpload.file_url}
@@ -234,8 +353,18 @@ export default function Slideshow({ event }: SlideshowProps) {
               <img
                 src={currentUpload.file_url}
                 alt={currentUpload.comment || 'Photo'}
-                className="w-full h-auto max-h-[75vh] object-contain rounded-sm"
+                className={`w-full h-auto max-h-[75vh] object-contain rounded-sm transition-opacity duration-300 ${
+                  isImageLoading || imageLoadError ? 'opacity-0' : 'opacity-100'
+                }`}
                 style={{ aspectRatio: 'auto' }}
+                onLoad={() => {
+                  setIsImageLoading(false)
+                  setImageLoadError(null)
+                }}
+                onError={() => {
+                  setIsImageLoading(false)
+                  setImageLoadError('Bild konnte nicht angezeigt werden')
+                }}
               />
             )}
           </div>
@@ -258,6 +387,17 @@ export default function Slideshow({ event }: SlideshowProps) {
           </div>
         </motion.div>
       </AnimatePresence>
+
+      {/* Debug info in development */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="absolute top-8 left-8 z-50 bg-black bg-opacity-50 text-white p-3 rounded-lg text-xs">
+          <div>Queue: {queue.length} images</div>
+          <div>Current: {currentIndex + 1}</div>
+          <div>Cache: {imagePreloader.getCacheSize()} preloaded</div>
+          <div>Loading: {isImageLoading ? 'Yes' : 'No'}</div>
+          {imageLoadError && <div className="text-red-300">Error: {imageLoadError}</div>}
+        </div>
+      )}
 
       <div className="absolute bottom-8 right-8 z-50">
         <QRCode value={uploadUrl} size={120} />
