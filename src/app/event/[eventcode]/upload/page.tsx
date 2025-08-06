@@ -208,6 +208,7 @@ export default function UploadPage() {
           .from('uploads')
           .select('*')
           .eq('event_id', event.id)
+          .eq('approved', true)
           .order('created_at', { ascending: false }),
         supabase
           .from('challenges')
@@ -242,6 +243,7 @@ export default function UploadPage() {
       .from('uploads')
       .select('*')
       .eq('event_id', eventId)
+      .eq('approved', true)
       .order('created_at', { ascending: false })
     if (!error) setState(prev => ({ ...prev, uploads: data || [] }))
   }

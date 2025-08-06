@@ -182,8 +182,11 @@ export default function Slideshow({ event }: SlideshowProps) {
     currentIndexRef.current = currentIndex
   }, [currentIndex])
 
+  const uploadUrl = `${window.location.origin}/event/${eventCode}/upload`
+
   if (queue.length === 0) {
     return (
+      <>
       <div
         className={`min-h-screen bg-gradient-to-br ${
           event?.livewall_background_gradient ||
@@ -192,10 +195,14 @@ export default function Slideshow({ event }: SlideshowProps) {
       >
         <p className="text-white text-xl">Warten auf die ersten Fotos...</p>
       </div>
+       <div className="absolute bottom-8 right-8 z-50">
+       <QRCode value={uploadUrl} size={120} />
+       </div>
+       </>
     )
   }
 
-  const uploadUrl = `${window.location.origin}/event/${eventCode}/upload`
+
 
   return (
     <div
@@ -252,16 +259,9 @@ export default function Slideshow({ event }: SlideshowProps) {
         </motion.div>
       </AnimatePresence>
 
-      <motion.div
-        key={currentUpload.id + '-qr'}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.8 }}
-        className="absolute bottom-8 right-8 z-50"
-      >
+      <div className="absolute bottom-8 right-8 z-50">
         <QRCode value={uploadUrl} size={120} />
-      </motion.div>
+        </div>
     </div>
   )
 }
