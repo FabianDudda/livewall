@@ -83,11 +83,20 @@ export async function POST(request: NextRequest) {
       const eventId = session.metadata?.eventId
       const userId = session.metadata?.userId
       const eventCode = session.metadata?.eventCode
+      const planType = session.metadata?.planType || 'basic'
+      const uploadLimit = parseInt(session.metadata?.uploadLimit || '200')
 
-      console.log('📋 Session metadata:', { eventId, userId, eventCode, paymentStatus: session.payment_status })
+      console.log('📋 Session metadata:', { 
+        eventId, 
+        userId, 
+        eventCode, 
+        planType, 
+        uploadLimit, 
+        paymentStatus: session.payment_status 
+      })
 
       if (!eventId || !userId) {
-        console.error('❌ Missing metadata in webhook:', { eventId, userId, eventCode })
+        console.error('❌ Missing metadata in webhook:', { eventId, userId, eventCode, planType })
         return NextResponse.json(
           { error: 'Missing metadata' },
           { status: 400 }
@@ -113,11 +122,11 @@ export async function POST(request: NextRequest) {
 
         console.log('📊 Current event state:', currentEvent)
 
-        // Update event upload limit to 200 using admin client
+        // Update event upload limit using admin client
         const { data: updateData, error: updateError } = await supabaseAdmin
           .from('events')
           .update({ 
-            upload_limit: 200,
+            upload_limit: uploadLimit,
             updated_at: new Date().toISOString()
           })
           .eq('id', eventId)
@@ -133,7 +142,7 @@ export async function POST(request: NextRequest) {
         }
 
         console.log('✅ Successfully upgraded event:', updateData)
-        console.log(`🎉 Event ${eventId} upgraded from ${currentEvent.upload_limit} to 200 uploads for user ${userId}`)
+        console.log(`🎉 Event ${eventId} upgraded from ${currentEvent.upload_limit} to ${uploadLimit} uploads (${planType} plan) for user ${userId}`)
         
         return NextResponse.json({ received: true })
       } catch (dbError) {

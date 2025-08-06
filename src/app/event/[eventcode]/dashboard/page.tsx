@@ -59,6 +59,7 @@ export default function EventDetail() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [isUpgrading, setIsUpgrading] = useState(false)
   const [upgradeError, setUpgradeError] = useState<string | null>(null)
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false)
 
   useEffect(() => {
     if (!loading && !user) {
@@ -75,8 +76,17 @@ export default function EventDetail() {
   useEffect(() => {
     // Check for upgrade success/failure in URL params
     const upgrade = searchParams.get('upgrade')
+    const plan = searchParams.get('plan')
+    
     if (upgrade === 'success') {
-      setSuccessMessage('Upgrade erfolgreich! Ihr Event unterstützt jetzt 200 Uploads.')
+      const planNames = {
+        basic: 'Pro Plan (200 uploads)',
+        premium: 'Premium Plan (500 uploads)', 
+        deluxe: 'Enterprise Plan (unlimited uploads)'
+      }
+      const planName = planNames[plan as keyof typeof planNames] || 'Pro Plan'
+      setSuccessMessage(`Upgrade erfolgreich! Ihr Event wurde auf ${planName} erweitert.`)
+      
       // Refresh event data to show updated upload limit
       if (user && eventCode) {
         fetchEventData()
@@ -199,7 +209,7 @@ export default function EventDetail() {
     }
   }
 
-  const handleUpgradeEvent = async () => {
+  const handleUpgradeEvent = async (planType: 'basic' | 'premium' | 'deluxe') => {
     if (!event || !eventId) return
 
     setIsUpgrading(true)
@@ -222,6 +232,7 @@ export default function EventDetail() {
         body: JSON.stringify({
           eventId: eventId,
           eventCode: event.event_code,
+          planType: planType,
         }),
       })
 
@@ -1164,25 +1175,16 @@ export default function EventDetail() {
               {/* Upgrade Card - only show if event has less than 200 upload limit */}
               {event.upload_limit < 200 && (
                 <button 
-                  onClick={handleUpgradeEvent}
-                  disabled={isUpgrading}
-                  className="bg-gradient-to-br from-orange-50 to-orange-100 p-6 rounded-lg shadow-sm border border-orange-200 hover:shadow-md transition-shadow text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={() => setShowUpgradeModal(true)}
+                  className="bg-gradient-to-br from-orange-50 to-orange-100 p-6 rounded-lg shadow-sm border border-orange-200 hover:shadow-md transition-shadow text-left"
                 >
                   <div className="flex items-center gap-4">
                     <div className="bg-orange-100 p-3 rounded-full border border-orange-200">
-                      {isUpgrading ? (
-                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-orange-600"></div>
-                      ) : (
-                        <Zap className="w-6 h-6 text-orange-600" />
-                      )}
+                      <Zap className="w-6 h-6 text-orange-600" />
                     </div>
                     <div>
-                      <h3 className="font-semibold text-gray-900">
-                        {isUpgrading ? 'Wird verarbeitet...' : 'Auf 200 Uploads upgraden'}
-                      </h3>
-                      <p className="text-gray-600 text-sm">
-                        {isUpgrading ? 'Weiterleitung zu Stripe...' : '$4.99 für erweiterte Upload-Kapazität'}
-                      </p>
+                      <h3 className="font-semibold text-gray-900">Upgrade Event</h3>
+                      <p className="text-gray-600 text-sm">Choose a plan to expand your event</p>
                     </div>
                   </div>
                 </button>
@@ -1676,6 +1678,218 @@ export default function EventDetail() {
           </div>
         )}
       </main>
+      
+      {/* Upgrade Modal */}
+      {showUpgradeModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              {/* Modal Header */}
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="text-2xl font-bold text-gray-900">Upgrade Your Event</h3>
+                  <p className="text-gray-600 mt-1">Choose the perfect plan for your event needs</p>
+                  <div className="mt-3 px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg inline-block">
+                    <p className="text-sm text-gray-600">
+                      <span className="font-medium">Current:</span> Free Plan ({stats.totalUploads}/{event.upload_limit} uploads used)
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowUpgradeModal(false)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                  disabled={isUpgrading}
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              {/* Error Message */}
+              {upgradeError && (
+                <div className="bg-red-50 border border-red-100 text-red-800 px-6 py-4 rounded-2xl flex items-center shadow-sm mb-6">
+                  <AlertCircle className="w-5 h-5 mr-3 text-red-600" />
+                  {upgradeError}
+                </div>
+              )}
+
+              {/* Plans Grid */}
+              <div className="grid md:grid-cols-3 gap-6">
+                {/* Pro Plan */}
+                <div className="border-2 border-blue-500 rounded-lg p-6 relative bg-blue-50">
+                  <div className="absolute top-4 right-4">
+                    <span className="bg-blue-600 text-white px-3 py-1 rounded-full text-sm font-medium">
+                      Recommended
+                    </span>
+                  </div>
+                  <div className="mb-4">
+                    <h4 className="text-xl font-bold text-gray-900 mb-2">Basic</h4>
+                    <div className="flex items-baseline">
+                      <span className="text-3xl font-bold text-gray-900">19.99€</span>
+                      <span className="text-gray-600 ml-2">one-time</span>
+                    </div>
+                  </div>
+                  <ul className="space-y-3 mb-6">
+                    <li className="flex items-center gap-2">
+                      <Check className="w-5 h-5 text-green-600" />
+                      <span className="text-gray-600">Up to 500 uploads</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check className="w-5 h-5 text-green-600" />
+                      <span className="text-gray-600">Advanced photo challenges</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check className="w-5 h-5 text-green-600" />
+                      <span className="text-gray-600">Custom branding options</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check className="w-5 h-5 text-green-600" />
+                      <span className="text-gray-600">Priority support</span>
+                    </li>
+                  </ul>
+                  <button
+                    onClick={() => handleUpgradeEvent('basic')}
+                    disabled={isUpgrading}
+                    className="w-full py-3 px-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {isUpgrading ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <Zap className="w-4 h-4" />
+                        Upgrade Now
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {/* Premium Plan */}
+                <div className="border-2 border-green-200 rounded-lg p-6 relative">
+                  <div className="absolute top-4 right-4">
+                    <span className="bg-green-100 text-green-600 px-3 py-1 rounded-full text-sm font-medium">
+                      Popular
+                    </span>
+                  </div>
+                  <div className="mb-4">
+                    <h4 className="text-xl font-bold text-gray-900 mb-2">Premium</h4>
+                    <div className="flex items-baseline">
+                      <span className="text-3xl font-bold text-gray-900">29.99€</span>
+                      <span className="text-gray-600 ml-2">one-time</span>
+                    </div>
+                  </div>
+                  <ul className="space-y-3 mb-6">
+                    <li className="flex items-center gap-2">
+                      <Check className="w-5 h-5 text-green-600" />
+                      <span className="text-gray-600">Up to 1000 uploads</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check className="w-5 h-5 text-green-600" />
+                      <span className="text-gray-600">Advanced photo challenges</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check className="w-5 h-5 text-green-600" />
+                      <span className="text-gray-600">Custom branding removal</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check className="w-5 h-5 text-green-600" />
+                      <span className="text-gray-600">Basic analytics</span>
+                    </li>
+                  </ul>
+                  <button
+                    onClick={() => handleUpgradeEvent('premium')}
+                    disabled={isUpgrading}
+                    className="w-full py-3 px-4 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {isUpgrading ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <Zap className="w-4 h-4" />
+                        Upgrade Now
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {/* Enterprise Plan */}
+                <div className="border-2 border-purple-200 rounded-lg p-6 relative">
+                  <div className="absolute top-4 right-4">
+                    <span className="bg-purple-100 text-purple-600 px-3 py-1 rounded-full text-sm font-medium">
+                      Best Value
+                    </span>
+                  </div>
+                  <div className="mb-4">
+                    <h4 className="text-xl font-bold text-gray-900 mb-2">Deluxe</h4>
+                    <div className="flex items-baseline">
+                      <span className="text-3xl font-bold text-gray-900">49.99€</span>
+                      <span className="text-gray-600 ml-2">one-time</span>
+                    </div>
+                  </div>
+                  <ul className="space-y-3 mb-6">
+                    <li className="flex items-center gap-2">
+                      <Check className="w-5 h-5 text-green-600" />
+                      <span className="text-gray-600">Up to 5000 uploads</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check className="w-5 h-5 text-green-600" />
+                      <span className="text-gray-600">Advanced analytics</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check className="w-5 h-5 text-green-600" />
+                      <span className="text-gray-600">White-label solution</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check className="w-5 h-5 text-green-600" />
+                      <span className="text-gray-600">24/7 premium support</span>
+                    </li>
+                  </ul>
+                  <button
+                    onClick={() => handleUpgradeEvent('deluxe')}
+                    disabled={isUpgrading}
+                    className="w-full py-3 px-4 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {isUpgrading ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <Zap className="w-4 h-4" />
+                        Upgrade Now
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Current Usage Info */}
+              <div className="mt-8 p-4 bg-gray-50 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Image className="w-5 h-5 text-gray-600" />
+                    <span className="text-sm font-medium text-gray-700">Current Usage</span>
+                  </div>
+                  <div className="text-sm text-gray-600">
+                    <span className="font-semibold">{stats.totalUploads}</span> of <span className="font-semibold">{event.upload_limit}</span> uploads used
+                  </div>
+                </div>
+                <div className="mt-2 w-full bg-gray-200 rounded-full h-2">
+                  <div 
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${Math.min((stats.totalUploads / event.upload_limit) * 100, 100)}%` }}
+                  ></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* Challenge Modal */}
       <ChallengeModal

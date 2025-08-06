@@ -15,11 +15,20 @@ export async function POST(request: NextRequest) {
   })
   try {
     const body = await request.json()
-    const { eventId, eventCode } = body
+    const { eventId, eventCode, planType = 'basic' } = body
 
     if (!eventId || !eventCode) {
       return NextResponse.json(
         { error: 'Event ID and event code are required' },
+        { status: 400 }
+      )
+    }
+
+    // Validate plan type
+    const validPlans = ['basic', 'premium', 'deluxe']
+    if (!validPlans.includes(planType)) {
+      return NextResponse.json(
+        { error: 'Invalid plan type' },
         { status: 400 }
       )
     }
@@ -69,10 +78,38 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check if event already has upgraded limit
-    if (eventData.upload_limit >= 200) {
+    // Get plan configuration
+    const planConfig = {
+      basic: {
+        priceId: process.env.STRIPE_PRICE_ID_BASIC!,
+        uploadLimit: 500,
+        name: 'Basic Plan'
+      },
+      premium: {
+        priceId: process.env.STRIPE_PRICE_ID_PREMIUM!,
+        uploadLimit: 1000,
+        name: 'Premium Plan'
+      },
+      deluxe: {
+        priceId: process.env.STRIPE_PRICE_ID_DELUXE!,
+        uploadLimit: 5000, 
+        name: 'Deluxe Plan'
+      }
+    }
+
+    const selectedPlan = planConfig[planType as keyof typeof planConfig]
+    if (!selectedPlan.priceId) {
       return NextResponse.json(
-        { error: 'Event already upgraded to 200 uploads' },
+        { error: `Price ID not configured for ${planType} plan` },
+        { status: 500 }
+      )
+    }
+
+    // Check if event already has this plan or higher
+    const currentUploadLimit = eventData.upload_limit
+    if (currentUploadLimit >= selectedPlan.uploadLimit) {
+      return NextResponse.json(
+        { error: `Event already has ${selectedPlan.name} or higher` },
         { status: 400 }
       )
     }
@@ -82,17 +119,19 @@ export async function POST(request: NextRequest) {
       payment_method_types: ['card'],
       line_items: [
         {
-          price: process.env.STRIPE_PRICE_ID!, // The price ID for your $4.99 upgrade
+          price: selectedPlan.priceId,
           quantity: 1,
         },
       ],
       mode: 'payment',
-      success_url: `${request.nextUrl.origin}/event/${eventCode}/dashboard?upgrade=success`,
+      success_url: `${request.nextUrl.origin}/event/${eventCode}/dashboard?upgrade=success&plan=${planType}`,
       cancel_url: `${request.nextUrl.origin}/event/${eventCode}/dashboard?upgrade=cancelled`,
       metadata: {
         eventId: eventId,
         userId: user.id,
         eventCode: eventCode,
+        planType: planType,
+        uploadLimit: selectedPlan.uploadLimit.toString(),
       },
     })
 
