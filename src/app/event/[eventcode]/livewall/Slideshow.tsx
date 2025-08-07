@@ -153,7 +153,7 @@ export default function Slideshow({ event }: SlideshowProps) {
           if (newUpload.challenge_id) {
             const { data: challenge } = await supabase
               .from('challenges')
-              .select('id, title, hashtag')
+              .select('id, event_id, title, hashtag, created_at')
               .eq('id', newUpload.challenge_id)
               .single()
             

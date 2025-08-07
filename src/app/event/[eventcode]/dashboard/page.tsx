@@ -1119,6 +1119,21 @@ export default function EventDetail() {
             {/* Actions */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <button 
+                onClick={() => router.push(`/event/${eventCode}/templates`)}
+                className="bg-white p-6 rounded-lg shadow-sm border hover:shadow-md transition-shadow text-left"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="bg-blue-100 p-3 rounded-full">
+                    <Edit className="w-6 h-6 text-blue-600" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900">Template Generator</h3>
+                    <p className="text-gray-600 text-sm">Create printable QR templates</p>
+                  </div>
+                </div>
+              </button>
+
+              <button 
                 onClick={handleDownloadQRCode}
                 className="bg-white p-6 rounded-lg shadow-sm border hover:shadow-md transition-shadow text-left"
               >
