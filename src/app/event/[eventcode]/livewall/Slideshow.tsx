@@ -9,6 +9,11 @@ import { imagePreloader } from '@/lib/imagePreloader'
 
 type Upload = Database['public']['Tables']['uploads']['Row']
 type Event = Database['public']['Tables']['events']['Row']
+type Challenge = Database['public']['Tables']['challenges']['Row']
+
+type UploadWithChallenge = Upload & {
+  challenges?: Challenge | null
+}
 
 interface SlideshowProps {
   event: Event
@@ -17,21 +22,28 @@ interface SlideshowProps {
 export default function Slideshow({ event }: SlideshowProps) {
   const params = useParams()
   const eventCode = params.eventcode as string
-  const [queue, setQueue] = useState<Upload[]>([])
+  const [queue, setQueue] = useState<UploadWithChallenge[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
   const [isImageLoading, setIsImageLoading] = useState(false)
   const [imageLoadError, setImageLoadError] = useState<string | null>(null)
 
-  const queueRef = useRef<Upload[]>([])
+  const queueRef = useRef<UploadWithChallenge[]>([])
   const currentIndexRef = useRef<number>(0)
-  const pendingUploadsRef = useRef<Upload[]>([])
+  const pendingUploadsRef = useRef<UploadWithChallenge[]>([])
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
   const preloadingRef = useRef(false)
 
   const fetchUploads = async () => {
     const { data: uploads, error } = await supabase
       .from('uploads')
-      .select('*')
+      .select(`
+        *,
+        challenges (
+          id,
+          title,
+          hashtag
+        )
+      `)
       .eq('event_id', event.id)
       .eq('approved', true)
       .order('created_at', { ascending: false })
@@ -54,7 +66,7 @@ export default function Slideshow({ event }: SlideshowProps) {
   }
 
   // Preload upcoming images (next 3 images)
-  const preloadUpcomingImages = async (startIndex: number, currentQueue: Upload[]) => {
+  const preloadUpcomingImages = async (startIndex: number, currentQueue: UploadWithChallenge[]) => {
     if (preloadingRef.current) return // Prevent multiple simultaneous preloading
     
     preloadingRef.current = true
@@ -89,7 +101,7 @@ export default function Slideshow({ event }: SlideshowProps) {
   }
 
   // Check if current image is loaded, with loading state management
-  const ensureCurrentImageLoaded = async (upload: Upload): Promise<boolean> => {
+  const ensureCurrentImageLoaded = async (upload: UploadWithChallenge): Promise<boolean> => {
     if (!upload || upload.file_type?.startsWith('video/')) {
       return true // Videos don't need preloading
     }
@@ -132,12 +144,27 @@ export default function Slideshow({ event }: SlideshowProps) {
           table: 'uploads',
           filter: `event_id=eq.${event.id}`,
         },
-        (payload) => {
+        async (payload) => {
           const newUpload = payload.new as Upload
           if (!newUpload.approved) return
+          
+          // Fetch challenge data for new upload
+          let uploadWithChallenge: UploadWithChallenge = newUpload
+          if (newUpload.challenge_id) {
+            const { data: challenge } = await supabase
+              .from('challenges')
+              .select('id, title, hashtag')
+              .eq('id', newUpload.challenge_id)
+              .single()
+            
+            if (challenge) {
+              uploadWithChallenge = { ...newUpload, challenges: challenge }
+            }
+          }
+          
           pendingUploadsRef.current = [
             ...pendingUploadsRef.current,
-            newUpload,
+            uploadWithChallenge,
           ]
         }
       )
@@ -149,7 +176,7 @@ export default function Slideshow({ event }: SlideshowProps) {
           table: 'uploads',
           filter: `event_id=eq.${event.id}`,
         },
-        (payload) => {
+        async (payload) => {
           const updatedUpload = payload.new as Upload
           if (!updatedUpload.approved) {
             const updatedQueue = queueRef.current.filter(
@@ -164,8 +191,22 @@ export default function Slideshow({ event }: SlideshowProps) {
             (upload) => upload.id === updatedUpload.id
           )
           if (idx !== -1) {
+            // Fetch challenge data for updated upload
+            let uploadWithChallenge: UploadWithChallenge = updatedUpload
+            if (updatedUpload.challenge_id) {
+              const { data: challenge } = await supabase
+                .from('challenges')
+                .select('id, title, hashtag')
+                .eq('id', updatedUpload.challenge_id)
+                .single()
+              
+              if (challenge) {
+                uploadWithChallenge = { ...updatedUpload, challenges: challenge }
+              }
+            }
+            
             const updatedQueue = [...queueRef.current]
-            updatedQueue[idx] = updatedUpload
+            updatedQueue[idx] = uploadWithChallenge
             queueRef.current = updatedQueue
             setQueue(updatedQueue)
           }
@@ -315,7 +356,7 @@ export default function Slideshow({ event }: SlideshowProps) {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.8 }}
-          className="bg-white p-6 pb-20 rounded-lg shadow-2xl rotate-1 transition-transform duration-300 max-w-6xl max-h-[90vh] mx-auto"
+          className="bg-white p-6 pb-20 rounded-lg shadow-2xl transition-transform duration-300 max-w-6xl max-h-[90vh] mx-auto"
         >
           <div className="relative">
             {/* Loading indicator */}
@@ -335,6 +376,21 @@ export default function Slideshow({ event }: SlideshowProps) {
                   <div className="text-red-500 text-4xl mb-3">⚠️</div>
                   <p className="text-red-700 font-medium mb-2">Bild konnte nicht geladen werden</p>
                   <p className="text-red-600 text-sm">{imageLoadError}</p>
+                </div>
+              </div>
+            )}
+            
+            {/* Hashtag overlay */}
+            {currentUpload.challenges?.hashtag && (
+              <div className="absolute top-3 right-3 z-10">
+                <div className="flex items-center gap-1 text-white text-base font-semibold px-3 py-1 bg-black bg-opacity-70 rounded-full backdrop-blur-sm">
+                  <span className="text-sm">🎯</span>
+                  <p
+                    className="m-0"
+                    style={{ fontFamily: 'var(--font-kalam), cursive' }}
+                  >
+                    #{currentUpload.challenges.hashtag}
+                  </p>
                 </div>
               </div>
             )}
@@ -382,7 +438,7 @@ export default function Slideshow({ event }: SlideshowProps) {
               className="text-gray-600 text-base"
               style={{ fontFamily: 'var(--font-kalam), cursive' }}
             >
-              - {currentUpload.uploader_name || 'Anonym'}
+              {currentUpload.uploader_name || 'Anonym'}
             </p>
           </div>
         </motion.div>
